@@ -22,7 +22,7 @@
 <input id="password" type="password" required autocomplete="current-password" placeholder="Your password">
 <p id="loginError" class="muted" style="color:#b00020;display:none">Wrong email or password. Try again.</p>
 <p><button class="btn" type="submit" style="width:100%">Log in</button></p>
-<p class="muted" style="font-size:14px">This is a static GitHub Pages site — there is no server. The password itself is not stored in the site; only a one-way hash of it is checked in your browser. For fully secure login, a server-backed login is needed.</p>
+<p class="muted" style="font-size:14px">This is a static GitHub Pages site — there is no server. The password itself is not stored in the site; only a one-way hash of it is checked in your browser. Your login lasts only until you close the tab or browser — next time you will need the password again. For fully secure login, a server-backed login is needed.</p>
 </form>
 </main>
 <footer>© Merchitecorp — Spectrum and Promotion</footer>
@@ -46,7 +46,7 @@ document.getElementById('loginForm').addEventListener('submit', async function (
   var hash = await sha256Hex(password);
   if (hash !== PASSWORD_SHA256) { err.style.display = "block"; return; }
   err.style.display = "none";
-  try { localStorage.setItem('merchitecorp_session', JSON.stringify({ email: email, at: new Date().toISOString() })); } catch (err2) {}
+  try { sessionStorage.setItem('merchitecorp_session', JSON.stringify({ email: email, at: new Date().toISOString() })); } catch (err2) {}
   window.location.href = 'dashboard.html';
 });
 </script>
