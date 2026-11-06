@@ -292,6 +292,32 @@ function setP(o,p,v){var ks=p.split('.');for(var i=0;i<ks.length-1;i++)o=o[ks[i]
 function pid(p){return 's'+state.tab+'-'+p.replace(/\./g,'-');}
 
 /* ---------- persistence ---------- */
+/* ---------- sync to Google Sheet (Uptown Shell - Shift Sheet Sync) ---------- */
+var SYNC_URL='https://script.google.com/macros/s/AKfycbxjongQ5prQyIv9lP4kv-55cpiWcQhxikBVcuCpWC2s7ij7GTHDmn0Q_cohPZQtqy5_Cg/exec';
+function syncShift(date, idx){
+  try{
+    var day=state.days[date]; if(!day) return Promise.resolve(false);
+    var sh=day.shifts[idx]; var c=calc(sh, idx);
+    if(!c.has) return Promise.resolve(false);
+    var payload={
+      date: date, shift: idx+1, cashier: sh.name||'',
+      cash: c.cash, dropsTotal: c.dropsT, credit: c.credit, debit: c.debit,
+      ebt: c.ebt, coupons: c.coupons, fees: c.fees,
+      payOutsTotal: c.payT,
+      payOutsDetail: sh.payouts.map(function(x){return (x.cat||'')+': '+(x.desc||'')+' $'+num(x.amt);}).join('; '),
+      fuelSales: c.fuel, merchSales: c.merch, tax: c.tax, lotterySales: c.lotSales,
+      totalSales: c.sales, collected: c.collected, shortOver: c.so,
+      gas87gal: c.g87g, gas89gal: c.g89g, gas93gal: c.g93g, gasSales: c.gasAmt
+    };
+    return fetch(SYNC_URL, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload)})
+      .then(function(){ return true; }).catch(function(){ return false; });
+  }catch(e){ return Promise.resolve(false); }
+}
+function syncDay(date){
+  var ps=[]; for(var i=0;i<N_SHIFTS;i++) ps.push(syncShift(date,i));
+  return Promise.all(ps).then(function(rs){ return rs.some(function(x){return x;}); });
+}
+
 function setStatus(kind,text){var el=$('#status');el.className='status'+(kind?' '+kind:'');el.textContent=text;}
 function readLocal(){try{var raw=localStorage.getItem(LS_KEY);return raw?JSON.parse(raw):{};}catch(e){return {};}}
 function writeLocal(){try{
@@ -324,7 +350,18 @@ function flush(){
     saving=false;
     if(failed){setStatus('warn',"Couldn't save. You may have view-only access.");}
     else if(Object.keys(dirty).length){saveTimer=setTimeout(flush,300);}
-    else setStatus('ok',mode==='db'?'Saved':'Saved on this device only');
+    else {
+      setStatus('ok',mode==='db'?'Saved':'Saved on this device only');
+      // Sync each saved day to the Google Sheet (cash/card/safe for reports)
+      var days=keys.slice();
+      (function nextSync(){
+        var d=days.shift(); if(!d) return;
+        syncDay(d).then(function(ok){
+          if(ok) setStatus('ok','Saved + synced to Sheet');
+          nextSync();
+        });
+      })();
+    }
   });
 }
 
