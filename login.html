@@ -15,26 +15,38 @@
 <form class="auth" id="loginForm">
 <h1 style="margin-top:0">Log in</h1>
 <p class="muted">Use the same address on any phone or network: this site is public, so you can log in from any device.</p>
-<div class="note"><strong>Demo login:</strong> this is a static GitHub Pages site — there is no server and no real password check. Entering any email and password signs you in on this device only (a flag is saved in your browser). Do not enter a password you use anywhere else.</div>
+<div class="note"><strong>Authorized login only:</strong> only the one authorized email and password can log in. Anything else will not log in.</div>
 <label for="email">Email</label>
 <input id="email" type="email" required autocomplete="username" placeholder="you@example.com">
 <label for="password">Password</label>
 <input id="password" type="password" required autocomplete="current-password" placeholder="Your password">
+<p id="loginError" class="muted" style="color:#b00020;display:none">Wrong email or password. Try again.</p>
 <p><button class="btn" type="submit" style="width:100%">Log in</button></p>
-<p class="muted" style="font-size:14px">No real passwords are checked or stored by this site.</p>
+<p class="muted" style="font-size:14px">This is a static GitHub Pages site — there is no server. The password itself is not stored in the site; only a one-way hash of it is checked in your browser. For fully secure login, a server-backed login is needed.</p>
 </form>
 </main>
 <footer>© Merchitecorp — Spectrum and Promotion</footer>
 <script>
-// Client-side demo login only. GitHub Pages is static hosting with no
-// server/backend, so there is no real authentication here. We only record
-// in this browser that the user completed the login form, then go to the
-// dashboard. Nothing is sent anywhere.
-document.getElementById('loginForm').addEventListener('submit', function (e) {
+// Only one authorized login: spectrumandpromotion@gmail.com
+// The password is NOT stored here in plain text. Only its SHA-256 hash is
+// stored, and the password you type is hashed in your browser and compared
+// to that hash. Do not put a real password in plain text in this file.
+var AUTHORIZED_EMAIL = "spectrumandpromotion@gmail.com";
+var PASSWORD_SHA256 = "6acdbfa9e5a5549cfc0788df56477cf1bb89d5bbb5dd74344fe42e36b636a41f";
+async function sha256Hex(text) {
+  var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2, "0"); }).join("");
+}
+document.getElementById('loginForm').addEventListener('submit', async function (e) {
   e.preventDefault();
-  var email = document.getElementById('email').value.trim();
-  if (!email) return;
-  try { localStorage.setItem('merchitecorp_session', JSON.stringify({ email: email, at: new Date().toISOString() })); } catch (err) {}
+  var email = document.getElementById('email').value.trim().toLowerCase();
+  var password = document.getElementById('password').value;
+  var err = document.getElementById('loginError');
+  if (email !== AUTHORIZED_EMAIL) { err.style.display = "block"; return; }
+  var hash = await sha256Hex(password);
+  if (hash !== PASSWORD_SHA256) { err.style.display = "block"; return; }
+  err.style.display = "none";
+  try { localStorage.setItem('merchitecorp_session', JSON.stringify({ email: email, at: new Date().toISOString() })); } catch (err2) {}
   window.location.href = 'dashboard.html';
 });
 </script>
