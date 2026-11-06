@@ -294,6 +294,7 @@ function pid(p){return 's'+state.tab+'-'+p.replace(/\./g,'-');}
 /* ---------- persistence ---------- */
 /* ---------- sync to Google Sheet (Uptown Shell - Shift Sheet Sync) ---------- */
 var SYNC_URL='https://script.google.com/macros/s/AKfycbxjongQ5prQyIv9lP4kv-55cpiWcQhxikBVcuCpWC2s7ij7GTHDmn0Q_cohPZQtqy5_Cg/exec';
+var syncTimer=null, syncPendingDays=[], syncRunning=false;
 function syncShift(date, idx){
   try{
     var day=state.days[date]; if(!day) return Promise.resolve(false);
@@ -352,15 +353,23 @@ function flush(){
     else if(Object.keys(dirty).length){saveTimer=setTimeout(flush,300);}
     else {
       setStatus('ok',mode==='db'?'Saved':'Saved on this device only');
-      // Sync each saved day to the Google Sheet (cash/card/safe for reports)
-      var days=keys.slice();
-      (function nextSync(){
-        var d=days.shift(); if(!d) return;
-        syncDay(d).then(function(ok){
-          if(ok) setStatus('ok','Saved + synced to Sheet');
-          nextSync();
-        });
-      })();
+      // Sync each saved day to the Google Sheet (cash/card/safe for reports),
+      // but only after 6 seconds with no further saves — so typing a shift
+      // sends ONE sync per date+shift (1, 2 or 3), never a row per keystroke.
+      // Syncs run one at a time so they cannot race and duplicate rows.
+      clearTimeout(syncTimer);
+      syncPendingDays = keys.slice();
+      syncTimer = setTimeout(function(){
+        if(syncRunning) return;
+        syncRunning = true;
+        (function nextSync(){
+          var d=syncPendingDays.shift(); if(!d){ syncRunning=false; return; }
+          syncDay(d).then(function(ok){
+            if(ok) setStatus('ok','Saved + synced to Sheet');
+            nextSync();
+          });
+        })();
+      }, 6000);
     }
   });
 }
