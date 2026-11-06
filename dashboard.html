@@ -12,7 +12,7 @@
 <nav><a class="link" href="index.html">Home</a><a class="link" href="login.html">Log in</a></nav>
 </div></header>
 <main>
-<div class="hero"><h1 id="welcome">Welcome back</h1><p>You are logged in on this device. This page is reached through the login on this site — the same address works on any phone or network.</p>
+<div class="hero"><h1 id="welcome">Welcome back</h1><p>You are logged in on this device for this visit only. Closing the tab or browser logs you out, and you will need the password again next time. This page is reached through the login on this site — the same address works on any phone or network.</p>
 <p><button class="btn" id="logoutBtn" type="button">Log out</button></p></div>
 <section>
 <h2>Your dashboard</h2>
@@ -28,11 +28,11 @@
 // Guard: if there is no login flag in this browser, send the visitor to the login page.
 (function () {
   var session = null;
-  try { session = JSON.parse(localStorage.getItem('merchitecorp_session') || 'null'); } catch (err) {}
+  try { session = JSON.parse(sessionStorage.getItem('merchitecorp_session') || 'null'); } catch (err) {}
   if (!session || !session.email) { window.location.href = 'login.html'; return; }
   document.getElementById('welcome').textContent = 'Welcome back, ' + session.email;
   document.getElementById('logoutBtn').addEventListener('click', function () {
-    try { localStorage.removeItem('merchitecorp_session'); } catch (err) {}
+    try { sessionStorage.removeItem('merchitecorp_session'); } catch (err) {}
     window.location.href = 'login.html';
   });
 })();
