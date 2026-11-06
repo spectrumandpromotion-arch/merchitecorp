@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log in — Merchitecorp</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><div class="nav">
+<a class="brand" href="index.html">Merchitecorp <span>• Spectrum and Promotion</span></a>
+<nav><a class="link" href="index.html">Home</a><a class="link" href="login.html">Log in</a></nav>
+</div></header>
+<main>
+<form class="auth" id="loginForm">
+<h1 style="margin-top:0">Log in</h1>
+<p class="muted">Use the same address on any phone or network: this site is public, so you can log in from any device.</p>
+<div class="note"><strong>Demo login:</strong> this is a static GitHub Pages site — there is no server and no real password check. Entering any email and password signs you in on this device only (a flag is saved in your browser). Do not enter a password you use anywhere else.</div>
+<label for="email">Email</label>
+<input id="email" type="email" required autocomplete="username" placeholder="you@example.com">
+<label for="password">Password</label>
+<input id="password" type="password" required autocomplete="current-password" placeholder="Your password">
+<p><button class="btn" type="submit" style="width:100%">Log in</button></p>
+<p class="muted" style="font-size:14px">No real passwords are checked or stored by this site.</p>
+</form>
+</main>
+<footer>© Merchitecorp — Spectrum and Promotion</footer>
+<script>
+// Client-side demo login only. GitHub Pages is static hosting with no
+// server/backend, so there is no real authentication here. We only record
+// in this browser that the user completed the login form, then go to the
+// dashboard. Nothing is sent anywhere.
+document.getElementById('loginForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var email = document.getElementById('email').value.trim();
+  if (!email) return;
+  try { localStorage.setItem('merchitecorp_session', JSON.stringify({ email: email, at: new Date().toISOString() })); } catch (err) {}
+  window.location.href = 'dashboard.html';
+});
+</script>
+</body>
+</html>
