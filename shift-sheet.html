@@ -58,6 +58,12 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .btn:hover{border-color:var(--accent)}
 .btn.danger{color:var(--short)}
 .btn.armed{background:var(--short);color:#fff;border-color:var(--short)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg .btn[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.repctl{display:grid;gap:10px}
+.repctl .row2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.repday{width:100%;text-align:left;background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:600}
 .dates{display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px}
 .chip{flex:0 0 auto;min-width:78px;text-align:left;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);display:grid;gap:1px}
 .chip .cw{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
@@ -175,6 +181,7 @@ td.dayc{font-weight:700;background:var(--accent-soft)}
     <div class="datebar">
       <label class="datepick" for="datePick"><span>Add or open a date</span><input type="date" id="datePick"></label>
       <button class="btn" id="todayBtn" type="button">Today</button>
+      <button class="btn primary" id="uploadBtn" type="button">Upload to Sheets</button>
       <button class="btn danger" id="delDay" type="button">Delete this day</button>
     </div>
     <div id="dates" class="dates" aria-label="Dates"></div>
@@ -282,7 +289,7 @@ function fmtOut(v,f){
 }
 
 /* ---------- state ---------- */
-var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[]}};
+var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[]},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0}};
 var mode='init',dbCol=null,dbSet=null;
 var dirty={},ver={},saving=false,saveTimer=null,armed=false,armTimer=null,resetArmed=false,resetTimer=null;
 function ensureDay(d){if(!state.days[d])state.days[d]=normDay(null);return state.days[d];}
@@ -294,7 +301,6 @@ function pid(p){return 's'+state.tab+'-'+p.replace(/\./g,'-');}
 /* ---------- persistence ---------- */
 /* ---------- sync to Google Sheet (Uptown Shell - Shift Sheet Sync) ---------- */
 var SYNC_URL='https://script.google.com/macros/s/AKfycbxjongQ5prQyIv9lP4kv-55cpiWcQhxikBVcuCpWC2s7ij7GTHDmn0Q_cohPZQtqy5_Cg/exec';
-var syncTimer=null, syncPendingDays=[], syncRunning=false;
 function syncShift(date, idx){
   try{
     var day=state.days[date]; if(!day) return Promise.resolve(false);
@@ -318,6 +324,31 @@ function syncShift(date, idx){
 function syncDay(date){
   var ps=[]; for(var i=0;i<N_SHIFTS;i++) ps.push(syncShift(date,i));
   return Promise.all(ps).then(function(rs){ return rs.some(function(x){return x;}); });
+}
+
+/* ---------- manual upload + delete (sheets only change on purpose) ---------- */
+var LS_UP='gas-shift-sheet-uploaded-v1';
+function readUploaded(){try{var m=JSON.parse(localStorage.getItem(LS_UP)||'{}');return m&&typeof m==='object'?m:{};}catch(e){return {};}}
+function markUploaded(d){try{var m=readUploaded();m[d]=new Date().toISOString();localStorage.setItem(LS_UP,JSON.stringify(m));}catch(e){}}
+function clearUploaded(d){try{var m=readUploaded();delete m[d];localStorage.setItem(LS_UP,JSON.stringify(m));}catch(e){}}
+function uploadedAt(d){return readUploaded()[d]||'';}
+function fmtUpTime(iso){try{return new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}catch(e){return '';}}
+function deleteDateFromSheets(d){
+  try{
+    return fetch(SYNC_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify({action:'delete',date:d})}).then(function(){return true;}).catch(function(){return false;});
+  }catch(e){return Promise.resolve(false);}
+}
+function doDeleteDate(d){
+  if(!validDate(d))return;
+  var wasOpen=(d===state.date);
+  delete state.days[d];clearUploaded(d);markDirty(d);
+  setStatus('','Deleting '+fmtDay(d)+' from website and sheets…');
+  deleteDateFromSheets(d).then(function(ok){
+    if(ok)setStatus('ok','Deleted '+fmtDay(d)+' from website and sheets.');
+    else setStatus('warn','Deleted from this device, but the sheet delete did not go through — check connection and delete the date again.');
+  });
+  if(wasOpen){ensureDay(todayStr());state.date=todayStr();}
+  renderAll();
 }
 
 function setStatus(kind,text){var el=$('#status');el.className='status'+(kind?' '+kind:'');el.textContent=text;}
@@ -352,26 +383,7 @@ function flush(){
     saving=false;
     if(failed){setStatus('warn',"Couldn't save. You may have view-only access.");}
     else if(Object.keys(dirty).length){saveTimer=setTimeout(flush,300);}
-    else {
-      setStatus('ok',mode==='db'?'Saved':'Saved on this device only');
-      // Sync each saved day to the Google Sheet (cash/card/safe for reports),
-      // but only after 6 seconds with no further saves — so typing a shift
-      // sends ONE sync per date+shift (1, 2 or 3), never a row per keystroke.
-      // Syncs run one at a time so they cannot race and duplicate rows.
-      clearTimeout(syncTimer);
-      syncPendingDays = keys.slice();
-      syncTimer = setTimeout(function(){
-        if(syncRunning) return;
-        syncRunning = true;
-        (function nextSync(){
-          var d=syncPendingDays.shift(); if(!d){ syncRunning=false; return; }
-          syncDay(d).then(function(ok){
-            if(ok) setStatus('ok','Saved + synced to Sheet');
-            nextSync();
-          });
-        })();
-      }, 6000);
-    }
+    else setStatus('ok',mode==='db'?'Saved':'Saved on this device only — tap Upload to Sheets to send it to the reports');
   });
 }
 
@@ -550,10 +562,200 @@ function renderDay(){
   $('#main').innerHTML=h;
 }
 
+/* ---------- reports tab ---------- */
+function weekStartStr(d){var dt=toDate(d);var dow=(dt.getDay()+6)%7;dt.setDate(dt.getDate()-dow);return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());}
+function addDaysStr(d,n){var dt=toDate(d);dt.setDate(dt.getDate()+n);return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());}
+function fmtDayLong(d){return toDate(d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});}
+function repCalc(d,idx){state.calcDate=d;var c=calc(state.days[d].shifts[idx],idx);state.calcDate=null;return c;}
+function repDay(d){
+  if(!state.days[d])return null;
+  state.calcDate=d;var cs=state.days[d].shifts.map(calc);state.calcDate=null;
+  return {cs:cs,has:cs.some(function(c){return c.has;}),collected:r2(sum(cs.map(function(c){return c.collected;}))),sales:r2(sum(cs.map(function(c){return c.sales;}))),so:r2(sum(cs.map(function(c){return c.so;})))};
+}
+function repRows(list){
+  var h='';
+  list.forEach(function(r){
+    if(r[0]==='grp'){h+='<tr class="grp"><td colspan="2">'+r[1]+'</td></tr>';return;}
+    var v=r[2]==='gal'?fmtOut(r[1],'gal'):(r[2]==='so'?soText(r[1]):(r[2]==='m'?fmtOut(r[1],'m'):usd(r[1])));
+    h+='<tr class="'+(r[3]||'')+'"><td>'+r[0]+'</td><td>'+v+'</td></tr>';
+  });
+  return h;
+}
+function repCard(title,rows,note){
+  return '<div class="card"><h2>'+title+'</h2><div class="tbl"><table><tbody>'+repRows(rows)+'</tbody></table></div>'+(note?'<p class="note">'+note+'</p>':'')+'</div>';
+}
+function repPayoutList(items){
+  if(!items.length)return '<p class="note">No payouts.</p>';
+  var h='<div class="tbl"><table><thead><tr><th>Type</th><th>Who / what</th><th style="text-align:right">Amount</th></tr></thead><tbody>';
+  items.forEach(function(x){h+='<tr><td>'+esc(x.cat||'')+(x.shift?' (Shift '+x.shift+')':'')+'</td><td>'+esc(x.desc||'—')+'</td><td style="text-align:right">'+usd(num(x.amt))+'</td></tr>';});
+  h+='</tbody></table></div>';
+  return h;
+}
+function payeeTotals(list){
+  var map={},order=[];
+  list.forEach(function(it){
+    var day=state.days[it.d];if(!day)return;
+    day.shifts[it.idx].payouts.forEach(function(x){
+      var amt=num(x.amt);if(!amt)return;
+      var who=(x.desc||'').trim()||'Unspecified',key=who+''+(x.cat||'');
+      if(!map[key]){map[key]={who:who,cat:x.cat||'',total:0,n:0};order.push(key);}
+      map[key].total=r2(map[key].total+amt);map[key].n++;
+    });
+  });
+  return order.map(function(k){return map[k];}).sort(function(a,b){return b.total-a.total;});
+}
+function repUploadLine(d){
+  var u=uploadedAt(d);
+  return u?'<p class="note">Uploaded to Sheets ✓ '+fmtUpTime(u)+'.</p>':'<p class="note">Not uploaded to Sheets yet — tap Upload to Sheets above when finished.</p>';
+}
+function repShift(d,idx){
+  var day=state.days[d];
+  var title='Shift '+(idx+1)+' — '+fmtDayLong(d);
+  if(!day)return {h:'<div class="card"><h2>'+title+'</h2><p class="note">Nothing entered for this date yet.</p></div>',totals:{has:false,collected:0,sales:0,so:0}};
+  var sh=day.shifts[idx],c=repCalc(d,idx);
+  var h='<div class="card wide"><h2>'+title+(sh.name?' · '+esc(sh.name):'')+'</h2><p class="note">Cashier: '+esc(sh.name||'—')+'</p>'+repUploadLine(d)+'</div>';
+  h+=repCard('Money collected',[
+    ['grp','Cash'],['Cash (drops + drawer + coins)',c.cash],['Safe drops',c.dropsT],['Cash in drawer (bills)',c.bills],['Coins',c.coins],
+    ['grp','Cards and other tender'],['Credit',c.credit],['Debit',c.debit],['EBT',c.ebt],['Coupons',c.coupons],['Payouts paid from drawer',c.payT],['Total collected',c.collected,'','key']
+  ]);
+  h+=repCard('Sales',[
+    ['Fuel',c.fuel],['Merchandise',c.merch],['Sales tax',c.tax]
+  ].concat(idx===LOTTERY_SHIFT?[['Lottery sold',c.lotSales]]:[]).concat([['Total sales',c.sales,'','key']]));
+  h+=repCard('Cards',[
+    ['Cards total',c.cards],['Card fees',c.fees],['Cards after fees',c.cardsNet,'','key']
+  ]);
+  if(idx===LOTTERY_SHIFT){
+    var g='<div class="card"><h2>Gas report</h2><div class="tbl"><table><thead><tr><th>Grade</th><th style="text-align:right">Gallons</th><th style="text-align:right">Price</th><th style="text-align:right">Cost</th><th style="text-align:right">Profit</th></tr></thead><tbody>';
+    var hasCost=false;
+    GAS.forEach(function(gg){
+      var r=sh.gas[gg[0]],gl=num(r.gal),pr=r.pr!==''?num(r.pr):num(state.settings.gas[gg[0]]),co=costFor(d,gg[0]);
+      if(co!=='')hasCost=true;
+      g+='<tr><td>'+gg[1]+'</td><td style="text-align:right">'+fmtOut(gl,'gal')+'</td><td style="text-align:right">'+(pr?fmtOut(pr,'m'):'—')+'</td><td style="text-align:right">'+(co!==''?fmtOut(num(co),'m'):'—')+'</td><td style="text-align:right">'+(co!==''?usd(c[gg[0]+'p']):'—')+'</td></tr>';
+    });
+    g+='<tr class="key"><td>Total</td><td style="text-align:right">'+fmtOut(c.gasGal,'gal')+'</td><td></td><td></td><td style="text-align:right">'+usd(c.gasProfit)+'</td></tr></tbody></table></div>';
+    if(!hasCost)g+='<p class="note">Set the fuel cost on Shift 3 (Fuel cost and profit) to see gas profit.</p>';
+    g+='</div>';
+    h+=g;
+    h+=repCard('Ohio lottery',[
+      ['Instant',c.lotI],['Online',c.lotO],['Lottery sold',c.lotSales],['Lottery cashes',c.payLot],['Net lottery',c.lotNet,'','key']
+    ]);
+  } else {
+    h+='<div class="card"><h2>Gas report</h2><p class="note">Gas report and lottery are entered on Shift 3.</p></div>';
+  }
+  var items=sh.payouts.filter(function(x){return num(x.amt);}).map(function(x){return {cat:x.cat,desc:x.desc,amt:x.amt};});
+  h+='<div class="card"><h2>Pay outs</h2>'+repPayoutList(items)+'<div class="tot"><span>Total payouts</span><b>'+usd(c.payT)+'</b></div></div>';
+  h+=repCard('Result',[
+    ['Cash short / over',c.so,'so','key'],['Expected deposit to Safe',r2(c.cash-c.payT-300),'','key']
+  ],'Expected deposit = cash counted − payouts − $300 float ($150 × 2 drawers).');
+  return {h:h,totals:{has:c.has,collected:c.collected,sales:c.sales,so:c.so}};
+}
+function repDayView(d){
+  var rd=repDay(d);
+  var title='Whole day — '+fmtDayLong(d);
+  if(!rd||!rd.has)return {h:'<div class="card"><h2>'+title+'</h2><p class="note">Nothing entered for this date yet.</p>'+repUploadLine(d)+'</div>',totals:{has:false,collected:0,sales:0,so:0}};
+  var cs=rd.cs,day=state.days[d];
+  var rows=[
+    ['grp','Money collected'],['Cash','cash'],['Credit','credit'],['Debit','debit'],['EBT','ebt'],['Coupons','coupons'],['Payouts','payT'],['Total collected','collected','key'],
+    ['grp','Sales'],['Fuel','fuel'],['Merchandise','merch'],['Sales tax','tax'],['Lottery sold','lotSales'],['Total sales','sales','key'],
+    ['grp','Result'],['Cards after fees','cardsNet'],['Gas profit','gasProfit'],['Expected deposit to Safe','expDep'],['Cash short / over','so','key so']
+  ];
+  var h='<div class="card wide"><h2>'+title+'</h2><div class="tbl"><table><thead><tr><th></th><th>Shift 1</th><th>Shift 2</th><th>Shift 3</th><th>Day</th></tr></thead><tbody>';
+  h+='<tr><td>Cashier</td>'+day.shifts.map(function(s){return '<td style="font-family:var(--sans)">'+esc(s.name||'—')+'</td>';}).join('')+'<td></td></tr>';
+  rows.forEach(function(r){
+    if(r[0]==='grp'){h+='<tr class="grp"><td colspan="5">'+r[1]+'</td></tr>';return;}
+    var key=r[1],isSo=(r[2]||'').indexOf('so')>-1;
+    function val(c){return key==='expDep'?r2(c.cash-c.payT-300):c[key];}
+    var tot=r2(sum(cs.map(val)));
+    function f(v){return isSo?soText(v):usd(v);}
+    h+='<tr class="'+((r[2]||'').indexOf('key')>-1?'key':'')+'"><td>'+r[0]+'</td>'+
+      cs.map(function(c){var cl=isSo?soInfo(val(c),c.has).cls:'';return '<td class="'+cl+'">'+f(val(c))+'</td>';}).join('')+
+      '<td class="dayc '+(isSo?soInfo(tot,rd.has).cls:'')+'">'+f(tot)+'</td></tr>';
+  });
+  h+='</tbody></table></div>'+repUploadLine(d)+'</div>';
+  var items=[];
+  day.shifts.forEach(function(s,i){s.payouts.forEach(function(x){if(num(x.amt))items.push({cat:x.cat,desc:x.desc,amt:x.amt,shift:i+1});});});
+  h+='<div class="card"><h2>Pay outs — whole day</h2>'+repPayoutList(items)+'</div>';
+  return {h:h,totals:{has:rd.has,collected:rd.collected,sales:rd.sales,so:rd.so}};
+}
+function repWeekView(d){
+  var ws=weekStartStr(d),we=addDaysStr(ws,6);
+  var title='Week — '+fmtDay(ws)+' to '+fmtDay(we);
+  var days=[],tot={sales:0,collected:0,cash:0,cards:0,ebt:0,gasProfit:0,expDep:0,so:0};
+  for(var i=0;i<7;i++){
+    var dd=addDaysStr(ws,i),rd=repDay(dd);
+    days.push({d:dd,rd:rd});
+    if(rd&&rd.has){
+      tot.sales=r2(tot.sales+rd.sales);tot.collected=r2(tot.collected+rd.collected);
+      tot.cash=r2(tot.cash+sum(rd.cs.map(function(c){return c.cash;})));
+      tot.cards=r2(tot.cards+sum(rd.cs.map(function(c){return c.cards;})));
+      tot.ebt=r2(tot.ebt+sum(rd.cs.map(function(c){return c.ebt;})));
+      tot.gasProfit=r2(tot.gasProfit+sum(rd.cs.map(function(c){return c.gasProfit;})));
+      tot.expDep=r2(tot.expDep+sum(rd.cs.map(function(c){return r2(c.cash-c.payT-300);})));
+      tot.so=r2(tot.so+rd.so);
+    }
+  }
+  var any=days.some(function(x){return x.rd&&x.rd.has;});
+  var h='<div class="card wide"><h2>'+title+'</h2>';
+  if(!any){h+='<p class="note">Nothing entered this week yet.</p></div>';return {h:h,totals:{has:false,collected:0,sales:0,so:0}};}
+  h+='<div class="tbl"><table><thead><tr><th>Day</th><th style="text-align:right">Sales</th><th style="text-align:right">Collected</th><th style="text-align:right">Cash</th><th style="text-align:right">Cards</th><th style="text-align:right">EBT</th><th style="text-align:right">Gas profit</th><th style="text-align:right">Exp. deposit</th><th style="text-align:right">Short / over</th></tr></thead><tbody>';
+  days.forEach(function(x){
+    var dt=toDate(x.d);
+    var lbl=dt.toLocaleDateString('en-US',{weekday:'short'})+' '+fmtDay(x.d)+(uploadedAt(x.d)?' ✓':'');
+    if(!x.rd||!x.rd.has){h+='<tr><td><button type="button" class="repday" data-rep="day-'+x.d+'">'+lbl+'</button></td><td colspan="8" style="color:var(--muted)">No entries</td></tr>';return;}
+    function s(key){return r2(sum(x.rd.cs.map(function(c){return c[key];})));}
+    var exp=r2(sum(x.rd.cs.map(function(c){return r2(c.cash-c.payT-300);})));
+    var soCls=soInfo(x.rd.so,true).cls;
+    h+='<tr><td><button type="button" class="repday" data-rep="day-'+x.d+'">'+lbl+'</button></td>'+
+      '<td style="text-align:right">'+usd(x.rd.sales)+'</td><td style="text-align:right">'+usd(x.rd.collected)+'</td>'+
+      '<td style="text-align:right">'+usd(s('cash'))+'</td><td style="text-align:right">'+usd(s('cards'))+'</td>'+
+      '<td style="text-align:right">'+usd(s('ebt'))+'</td><td style="text-align:right">'+usd(s('gasProfit'))+'</td>'+
+      '<td style="text-align:right">'+usd(exp)+'</td><td style="text-align:right" class="'+soCls+'">'+soText(x.rd.so)+'</td></tr>';
+  });
+  h+='<tr class="key"><td>Week total</td><td style="text-align:right">'+usd(tot.sales)+'</td><td style="text-align:right">'+usd(tot.collected)+'</td><td style="text-align:right">'+usd(tot.cash)+'</td><td style="text-align:right">'+usd(tot.cards)+'</td><td style="text-align:right">'+usd(tot.ebt)+'</td><td style="text-align:right">'+usd(tot.gasProfit)+'</td><td style="text-align:right">'+usd(tot.expDep)+'</td><td style="text-align:right">'+soText(tot.so)+'</td></tr>';
+  h+='</tbody></table></div></div>';
+  var list=[];for(var j=0;j<7;j++){for(var k=0;k<N_SHIFTS;k++)list.push({d:addDaysStr(ws,j),idx:k});}
+  var pe=payeeTotals(list);
+  h+='<div class="card"><h2>Pay outs this week — by payee</h2>';
+  if(!pe.length)h+='<p class="note">No payouts this week.</p>';
+  else{
+    h+='<div class="tbl"><table><thead><tr><th>Payee</th><th>Type</th><th style="text-align:right">Payments</th><th style="text-align:right">Total paid</th></tr></thead><tbody>';
+    pe.forEach(function(p){h+='<tr><td>'+esc(p.who)+'</td><td>'+esc(p.cat)+'</td><td style="text-align:right">'+p.n+'</td><td style="text-align:right">'+usd(p.total)+'</td></tr>';});
+    h+='</tbody></table></div>';
+  }
+  h+='</div>';
+  return {h:h,totals:{has:true,collected:tot.collected,sales:tot.sales,so:tot.so}};
+}
+function renderReports(){
+  var R=state.rep;
+  if(!R.date||!validDate(R.date))R.date=state.date;
+  var d=R.date,h='';
+  h+='<div class="grid"><section class="card wide"><h2>Reports</h2><div class="repctl">';
+  h+='<div class="row2"><button type="button" class="btn" data-rep="prev-day" aria-label="Previous day">‹</button><label class="datepick" style="flex:1"><span>Show date</span><input type="date" data-rep-date value="'+d+'"></label><button type="button" class="btn" data-rep="next-day" aria-label="Next day">›</button><button type="button" class="btn" data-rep="today">Today</button></div>';
+  h+='<div class="seg" role="group" aria-label="Report view"><button type="button" class="btn" data-rep="mode-shift" aria-pressed="'+(R.mode==='shift')+'">Shift</button><button type="button" class="btn" data-rep="mode-day" aria-pressed="'+(R.mode==='day')+'">Whole day</button><button type="button" class="btn" data-rep="mode-week" aria-pressed="'+(R.mode==='week')+'">Week</button></div>';
+  if(R.mode==='shift'){
+    h+='<div class="seg" role="group" aria-label="Shift"><button type="button" class="btn" data-rep="shift-0" aria-pressed="'+(R.shift===0)+'">Shift 1</button><button type="button" class="btn" data-rep="shift-1" aria-pressed="'+(R.shift===1)+'">Shift 2</button><button type="button" class="btn" data-rep="shift-2" aria-pressed="'+(R.shift===2)+'">Shift 3</button></div>';
+  }
+  if(R.mode==='week'){
+    var ws=weekStartStr(d),we=addDaysStr(ws,6);
+    h+='<div class="row2"><button type="button" class="btn" data-rep="prev-week" aria-label="Previous week">‹ Week</button><span class="lbl">Week of '+fmtDay(ws)+' – '+fmtDay(we)+'</span><button type="button" class="btn" data-rep="next-week" aria-label="Next week">Week ›</button></div>';
+  }
+  h+='</div></section></div>';
+  var res;
+  h+='<div class="grid" style="margin-top:16px">';
+  if(R.mode==='shift')res=repShift(d,R.shift);
+  else if(R.mode==='day')res=repDayView(d);
+  else res=repWeekView(d);
+  h+=res.h+'</div>';
+  state.repTotals=res.totals;
+  h+='<div class="grid" style="margin-top:16px"><section class="card wide"><h2>Manage</h2><div class="repctl"><div class="row2"><label class="datepick" style="flex:1"><span>Delete a date</span><input type="date" id="repDelDate" value=""></label><button type="button" class="btn danger" data-rep="del-date">'+(R.delArm?'Tap again to delete '+fmtDay(R.delArm):'Delete date…')+'</button></div><p class="note">Deletes the whole date from this website AND from the Google Sheets (Sync sheet + Daily Closing). Use it when a date was entered wrong. There is no undo.</p></div></section></div>';
+  h+='<p class="note" style="margin-top:16px">Till counts (transactions, voids, no sales) come from the SuperSonic closing report, not this sheet.</p>';
+  $('#main').innerHTML=h;
+}
+
 function renderTabs(){
   var h='';
-  for(var i=0;i<=N_SHIFTS;i++){
-    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):'Day total')+'</span><span class="tm" id="tm'+i+'"></span></button>';
+  for(var i=0;i<=N_SHIFTS+1;i++){
+    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':'Reports'))+'</span><span class="tm" id="tm'+i+'"></span></button>';
   }
   $('#tabs').innerHTML=h;
 }
@@ -567,6 +769,7 @@ function updateLive(){
   /* tab minis */
   for(var i=0;i<N_SHIFTS;i++){var el=$('#tm'+i);if(el){var c=dc.cs[i],inf=soInfo(c.so,c.has);el.className='tm '+inf.cls;el.textContent=c.has?soText(c.so):'—';}}
   var te=$('#tm'+N_SHIFTS);if(te){var ti=soInfo(dc.so,dc.has);te.className='tm '+ti.cls;te.textContent=dc.has?soText(dc.so):'—';}
+  var t4=$('#tm'+(N_SHIFTS+1));if(t4){var r4=state.repTotals||{has:false,so:0};var i4=soInfo(r4.so||0,r4.has);t4.className='tm '+i4.cls;t4.textContent=r4.has?soText(r4.so):'—';}
   /* current shift fields */
   if(state.tab<N_SHIFTS){
     var o=dc.cs[state.tab];
@@ -577,9 +780,11 @@ function updateLive(){
     $$('#main [data-pill]').forEach(function(el){el.className='pill '+inf.cls;el.textContent=inf.word;});
   }
   /* bottom bar */
-  var isDay=state.tab>=N_SHIFTS,c2=isDay?{so:dc.so,has:dc.has,collected:dc.collected,sales:dc.sales}:dc.cs[state.tab];
+  var isDay=state.tab>=N_SHIFTS,c2;
+  if(state.tab===N_SHIFTS+1){var rt=state.repTotals||{so:0,has:false,collected:0,sales:0};c2={so:rt.so,has:rt.has,collected:rt.collected,sales:rt.sales};}
+  else c2=isDay?{so:dc.so,has:dc.has,collected:dc.collected,sales:dc.sales}:dc.cs[state.tab];
   var bi=soInfo(c2.so,c2.has);
-  $('#barTitle').textContent=isDay?'Day total':'Shift '+(state.tab+1);
+  $('#barTitle').textContent=state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1));
   $('#barSub').textContent='Collected '+usd(c2.collected)+'  ·  Sales '+usd(c2.sales);
   var bn=$('#barNum');bn.className='bn '+bi.cls;bn.textContent=c2.has?soText(c2.so):'—';
   var bp=$('#barPill');bp.className='pill '+bi.cls;bp.textContent=bi.word;
@@ -609,7 +814,7 @@ function renderDates(){
 }
 function renderAll(){
   renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else renderDay();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else renderReports();
   renderDates();updateLive();
   armed=false;var dd=$('#delDay');dd.textContent='Delete this day';dd.classList.remove('armed');
 }
@@ -701,28 +906,76 @@ main.addEventListener('click',function(e){
 $('#tabs').addEventListener('click',function(e){
   var b=e.target.closest('[data-tab]');if(!b)return;
   state.tab=Number(b.dataset.tab);renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else renderDay();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else renderReports();
   updateLive();
   window.scrollTo({top:0});
+});
+main.addEventListener('click',function(e){
+  var b=e.target.closest('[data-rep]');if(!b||state.tab!==N_SHIFTS+1)return;
+  var k=b.dataset.rep,R=state.rep;
+  if(k==='mode-shift'){R.mode='shift';}
+  else if(k==='mode-day'){R.mode='day';}
+  else if(k==='mode-week'){R.mode='week';}
+  else if(k==='today'){R.date=todayStr();}
+  else if(k==='prev-day'){R.date=addDaysStr(R.date,-1);}
+  else if(k==='next-day'){R.date=addDaysStr(R.date,1);}
+  else if(k==='prev-week'){R.date=addDaysStr(R.date,-7);}
+  else if(k==='next-week'){R.date=addDaysStr(R.date,7);}
+  else if(k.indexOf('shift-')===0){R.shift=Number(k.slice(6));R.mode='shift';}
+  else if(k.indexOf('day-')===0){R.date=k.slice(4);R.mode='day';}
+  else if(k==='del-date'){
+    var inp=document.getElementById('repDelDate'),dd=inp&&inp.value;
+    if(!R.delArm||(dd&&dd!==R.delArm)){
+      if(!dd||!validDate(dd)){setStatus('warn','Pick a date to delete first.');return;}
+      R.delArm=dd;
+      b.textContent='Tap again to delete '+fmtDay(dd);
+      setStatus('warn','Tap Delete again to delete '+fmtDay(dd)+' from the website and the sheets. There is no undo.');
+      clearTimeout(R._delT);
+      R._delT=setTimeout(function(){R.delArm='';var bb=document.querySelector('[data-rep="del-date"]');if(bb)bb.textContent='Delete date…';},4000);
+      return;
+    }
+    var ddel=R.delArm;R.delArm='';
+    doDeleteDate(ddel);
+    return;
+  }
+  else return;
+  renderReports();updateLive();
+});
+main.addEventListener('change',function(e){
+  var t=e.target;
+  if(t.dataset&&t.dataset.repDate!==undefined&&state.tab===N_SHIFTS+1&&validDate(t.value)){state.rep.date=t.value;renderReports();updateLive();}
 });
 $('#dates').addEventListener('click',function(e){var b=e.target.closest('[data-date]');if(b)openDate(b.dataset.date,false);});
 $('#datePick').addEventListener('change',function(e){if(e.target.value)openDate(e.target.value,true);});
 $('#todayBtn').addEventListener('click',function(){openDate(todayStr(),true);});
 $('#delDay').addEventListener('click',function(){
   var btn=$('#delDay');
-  if(!armed){armed=true;btn.textContent='Tap again to delete '+state.date;btn.classList.add('armed');clearTimeout(armTimer);armTimer=setTimeout(function(){armed=false;btn.textContent='Delete this day';btn.classList.remove('armed');},4000);return;}
-  var d=state.date;
-  delete state.days[d];
-  markDirty(d);
-  ensureDay(todayStr());state.date=todayStr();
-  if(d===state.date){/* deleted today: blank day shown */}
-  renderAll();
+  if(!armed){armed=true;btn.textContent='Tap again to delete '+state.date+' (website + sheets)';btn.classList.add('armed');clearTimeout(armTimer);armTimer=setTimeout(function(){armed=false;btn.textContent='Delete this day';btn.classList.remove('armed');},4000);return;}
+  clearTimeout(armTimer);armed=false;btn.textContent='Delete this day';btn.classList.remove('armed');
+  doDeleteDate(state.date);
+});
+
+var uploading=false;
+$('#uploadBtn').addEventListener('click',function(){
+  var d=state.date,btn=$('#uploadBtn');
+  if(uploading)return;
+  var dc=state.days[d]?dayCalc(d):null;
+  if(!dc||!dc.has){setStatus('warn','Nothing to upload for '+fmtDay(d)+' — no entries yet.');return;}
+  uploading=true;btn.disabled=true;
+  setStatus('','Uploading '+fmtDay(d)+' to Sheets…');
+  syncDay(d).then(function(ok){
+    uploading=false;btn.disabled=false;
+    if(ok){markUploaded(d);setStatus('ok','Uploaded to Sheets ✓ '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}));}
+    else setStatus('warn','Upload failed — check connection and tap Upload to Sheets again.');
+    if(state.tab===N_SHIFTS+1){renderReports();updateLive();}
+  });
 });
 
 /* ---------- boot ---------- */
 function typing(){var a=document.activeElement;return a&&main.contains(a)&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName);}
 function refreshView(){
-  if(state.tab>=N_SHIFTS){renderDay();updateLive();return;}
+  if(state.tab===N_SHIFTS){renderDay();updateLive();return;}
+  if(state.tab===N_SHIFTS+1){renderReports();updateLive();return;}
   if(typing())updateLive();else{renderShift();updateLive();}
 }
 function startLocal(){
