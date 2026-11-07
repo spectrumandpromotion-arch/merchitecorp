@@ -289,7 +289,7 @@ function fmtOut(v,f){
 }
 
 /* ---------- state ---------- */
-var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[]},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0}};
+var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[]},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0}};
 var mode='init',dbCol=null,dbSet=null;
 var dirty={},ver={},saving=false,saveTimer=null,armed=false,armTimer=null,resetArmed=false,resetTimer=null;
 function ensureDay(d){if(!state.days[d])state.days[d]=normDay(null);return state.days[d];}
@@ -752,10 +752,187 @@ function renderReports(){
   $('#main').innerHTML=h;
 }
 
+/* ---------- daily reports tab (from the closing-report sheets) ---------- */
+var DREP_SHIFT_LABELS=['1st Shift (Overnight)','2nd Shift (Morning)','3rd Shift (Evening)'];
+var DREP_LS='gas-shift-sheet-daily-reports-v1';
+function drepNormDate(s){
+  var t=String(s||'').trim();
+  var m=t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m)return m[1]+'-'+m[2]+'-'+m[3];
+  m=t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m)return m[3]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2);
+  return '';
+}
+function drepRows(){var j=state.drepData;if(!j||!j.dailyClosing)return [];return j.dailyClosing.slice(1);}
+function drepShiftRow(d,idx){
+  var rows=drepRows();
+  for(var i=0;i<rows.length;i++){var r=rows[i];if(drepNormDate(r[0])===d&&String(r[1]||'').indexOf(DREP_SHIFT_LABELS[idx])===0)return r;}
+  return null;
+}
+function drepCell(r,i){if(!r)return '';var v=r[i];return v==null?'':String(v);}
+function drepHasShiftSheet(r){if(!r)return false;for(var i=21;i<=37;i++){if(String(r[i]||'').trim()!=='')return true;}return false;}
+function drepLoad(force){
+  var D=state.drep;
+  if(D.loading)return;
+  if(!force&&state.drepData){D.loaded=true;return;}
+  D.loading=true;D.error='';
+  renderDailyReports();
+  fetch(SYNC_URL+'?action=reports').then(function(res){return res.json();}).then(function(j){
+    D.loading=false;
+    if(!j||!j.ok||!j.dailyClosing)throw new Error('bad response');
+    state.drepData=j;D.loaded=true;D.error='';D.updated=j.generatedAt||new Date().toISOString();
+    try{localStorage.setItem(DREP_LS,JSON.stringify({at:D.updated,data:j}));}catch(e){}
+    if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();}
+  }).catch(function(){
+    D.loading=false;
+    var cached=null;
+    try{cached=JSON.parse(localStorage.getItem(DREP_LS)||'null');}catch(e){}
+    if(cached&&cached.data){state.drepData=cached.data;D.loaded=true;D.updated=cached.at;D.error='Showing the saved copy from '+fmtUpTime(cached.at)+' — could not reach the sheets.';}
+    else D.error='Could not load the daily reports — check connection and tap Refresh.';
+    if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();}
+  });
+}
+function drepCard(title,rows){
+  var h='<div class="card"><h2>'+title+'</h2><div class="tbl"><table><tbody>';
+  rows.forEach(function(r){
+    if(r[0]==='grp'){h+='<tr class="grp"><td colspan="2">'+r[1]+'</td></tr>';return;}
+    var v=r[1]==null||String(r[1]).trim()===''?'—':esc(r[1]);
+    h+='<tr class="'+(r[2]||'')+'"><td>'+r[0]+'</td><td>'+v+'</td></tr>';
+  });
+  return h+'</tbody></table></div>';
+}
+function drepShiftView(d,idx){
+  var r=drepShiftRow(d,idx);
+  var title='Shift '+(idx+1)+' — '+fmtDayLong(d);
+  if(!r)return {h:'<div class="card"><h2>'+title+'</h2><p class="note">No closing report for this shift yet — it appears here after the scheduled report run.</p></div>',totals:{has:false,collected:0,sales:0,so:0}};
+  var h='<div class="card wide"><h2>'+title+(drepCell(r,21)?' · '+esc(drepCell(r,21)):'')+'</h2><p class="note">'+esc(drepCell(r,1))+' · Transactions '+esc(drepCell(r,2))+' – '+esc(drepCell(r,3))+'</p></div>';
+  h+=drepCard('Sales — SuperSonic closing report',[
+    ['Total sales',drepCell(r,4),'','key'],['Net sales',drepCell(r,5)],['Transactions',drepCell(r,6)],['Average ticket',drepCell(r,7)],
+    ['Gasoline gallons',drepCell(r,8)?drepCell(r,8)+' gal':''],['Gasoline sales',drepCell(r,9)],['Inside sales',drepCell(r,10)],
+    ['Tax collected',drepCell(r,11)],['Voids',drepCell(r,12)],['No sales',drepCell(r,13)],['EBT',drepCell(r,14)],['Pay outs',drepCell(r,15)],
+    ['Expected cash',drepCell(r,16)],['Over',drepCell(r,17)],['Starting float',drepCell(r,18)],['Expected deposit to Safe',drepCell(r,19),'','key'],['Cash sales',drepCell(r,20)]
+  ]);
+  if(drepHasShiftSheet(r)){
+    h+=drepCard('Cash and card — shift sheet',[
+      ['Cashier',drepCell(r,21)],['Cash counted',drepCell(r,22)],['Safe drops',drepCell(r,23)],['Credit',drepCell(r,24)],['Debit',drepCell(r,25)],['Cards total',drepCell(r,26)],['EBT',drepCell(r,27)],['Coupons',drepCell(r,28)],['Card fees',drepCell(r,29)],['Collected',drepCell(r,30),'','key'],['Short / over',drepCell(r,31)],['Expected deposit to Safe',drepCell(r,32),'','key'],
+      ['Gas profit 87',drepCell(r,34)],['Gas profit 89',drepCell(r,35)],['Gas profit 93',drepCell(r,36)],['Gas profit total',drepCell(r,37),'','key'],['Synced at',drepCell(r,33)?fmtUpTime(drepCell(r,33)):'']]);
+  } else {
+    h+='<div class="card"><h2>Cash and card — shift sheet</h2><p class="note">No shift-sheet data uploaded for this shift yet — cash, card and EBT appear here after the owner uploads the day from this website.</p></div>';
+  }
+  var cm=drepCell(r,38);
+  if(cm)h+='<div class="card"><h2>Comments</h2><p>'+esc(cm)+'</p></div>';
+  return {h:h,totals:{has:true,collected:num(drepCell(r,30))||num(drepCell(r,4)),sales:num(drepCell(r,4)),so:num(drepCell(r,31))}};
+}
+function drepSumMoney(rows,idx){
+  var n=0,c=0;
+  rows.forEach(function(r){if(r){var v=num(drepCell(r,idx));if(String(drepCell(r,idx)).trim()!==''){n=r2(n+v);c++;}}});
+  return c?usd(n):'—';
+}
+function drepSumInt(rows,idx){
+  var n=0,c=0;
+  rows.forEach(function(r){if(r){var v=num(drepCell(r,idx));if(String(drepCell(r,idx)).trim()!==''){n+=v;c++;}}});
+  return c?String(n):'—';
+}
+function drepSumGal(rows,idx){
+  var n=0,c=0;
+  rows.forEach(function(r){if(r){var v=num(drepCell(r,idx));if(String(drepCell(r,idx)).trim()!==''){n=r2(n+v);c++;}}});
+  return c?n.toLocaleString('en-US',{maximumFractionDigits:3})+' gal':'—';
+}
+function drepDayView(d){
+  var rows=[drepShiftRow(d,0),drepShiftRow(d,1),drepShiftRow(d,2)];
+  var title='Whole day — '+fmtDayLong(d);
+  if(!rows[0]&&!rows[1]&&!rows[2])return {h:'<div class="card"><h2>'+title+'</h2><p class="note">No closing reports for this date yet.</p></div>',totals:{has:false,collected:0,sales:0,so:0}};
+  var fields=[
+    ['Total sales',4,'m'],['Net sales',5,'m'],['Transactions',6,'i'],['Gasoline gallons',8,'g'],['Gasoline sales',9,'m'],['Inside sales',10,'m'],
+    ['Tax collected',11,'m'],['Voids',12,'i'],['No sales',13,'i'],['Pay outs',15,'m'],['Cash counted',22,'m'],['Cards total',26,'m'],['EBT (shift sheet)',27,'m'],
+    ['Coupons',28,'m'],['Expected deposit to Safe',32,'m'],['Short / over',31,'m'],['Gas profit total',37,'m']
+  ];
+  var h='<div class="card wide"><h2>'+title+'</h2><div class="tbl"><table><thead><tr><th></th><th style="text-align:right">Shift 1</th><th style="text-align:right">Shift 2</th><th style="text-align:right">Shift 3</th><th style="text-align:right">Day</th></tr></thead><tbody>';
+  fields.forEach(function(f){
+    h+='<tr><td>'+f[0]+'</td>';
+    rows.forEach(function(r){
+      var v=r?drepCell(r,f[1]):'';
+      h+='<td style="text-align:right">'+(v===''?'—':esc(f[2]==='g'?v+' gal':v))+'</td>';
+    });
+    var tot=f[2]==='i'?drepSumInt(rows,f[1]):(f[2]==='g'?drepSumGal(rows,f[1]):drepSumMoney(rows,f[1]));
+    h+='<td style="text-align:right"><b>'+tot+'</b></td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+  rows.forEach(function(r,i){
+    if(r&&drepCell(r,38))h+='<div class="card"><h2>Shift '+(i+1)+' — comments</h2><p>'+esc(drepCell(r,38))+'</p></div>';
+  });
+  var tot={has:true,collected:0,sales:0,so:0};
+  rows.forEach(function(r){if(r){tot.sales=r2(tot.sales+num(drepCell(r,4)));tot.collected=r2(tot.collected+(num(drepCell(r,30))||num(drepCell(r,4))));tot.so=r2(tot.so+num(drepCell(r,31)));}});
+  return {h:h,totals:tot};
+}
+function drepWeekView(d){
+  var ws=weekStartStr(d),we=addDaysStr(ws,6);
+  var days=[],tot={sales:0,gas:0,inside:0,pay:0,cash:0,cards:0,ebt:0,gp:0,exp:0};
+  for(var j=0;j<7;j++){
+    var dd=addDaysStr(ws,j),rows=[drepShiftRow(dd,0),drepShiftRow(dd,1),drepShiftRow(dd,2)];
+    var has=rows[0]||rows[1]||rows[2];
+    var s={sales:0,gas:0,inside:0,pay:0,cash:0,cards:0,ebt:0,gp:0,exp:0};
+    rows.forEach(function(r){if(!r)return;
+      s.sales=r2(s.sales+num(drepCell(r,4)));s.gas=r2(s.gas+num(drepCell(r,9)));s.inside=r2(s.inside+num(drepCell(r,10)));
+      s.pay=r2(s.pay+num(drepCell(r,15)));s.cash=r2(s.cash+num(drepCell(r,22)));s.cards=r2(s.cards+num(drepCell(r,26)));
+      s.ebt=r2(s.ebt+num(drepCell(r,27)));s.gp=r2(s.gp+num(drepCell(r,37)));s.exp=r2(s.exp+num(drepCell(r,32)));
+    });
+    days.push({d:dd,has:has,s:s});
+    if(has){tot.sales=r2(tot.sales+s.sales);tot.gas=r2(tot.gas+s.gas);tot.inside=r2(tot.inside+s.inside);tot.pay=r2(tot.pay+s.pay);tot.cash=r2(tot.cash+s.cash);tot.cards=r2(tot.cards+s.cards);tot.ebt=r2(tot.ebt+s.ebt);tot.gp=r2(tot.gp+s.gp);tot.exp=r2(tot.exp+s.exp);}
+  }
+  var h='<div class="card wide"><h2>Week of '+fmtDay(ws)+' – '+fmtDay(we)+'</h2><div class="tbl"><table><thead><tr><th>Day</th><th style="text-align:right">Sales</th><th style="text-align:right">Gas</th><th style="text-align:right">Inside</th><th style="text-align:right">Pay outs</th><th style="text-align:right">Cash</th><th style="text-align:right">Cards</th><th style="text-align:right">EBT</th><th style="text-align:right">Gas profit</th><th style="text-align:right">Exp. deposit</th></tr></thead><tbody>';
+  days.forEach(function(x){
+    var dt=toDate(x.d),lbl=dt.toLocaleDateString('en-US',{weekday:'short'})+' '+fmtDay(x.d);
+    if(!x.has){h+='<tr><td><button type="button" class="repday" data-drep="day-'+x.d+'">'+lbl+'</button></td><td colspan="9" style="color:var(--muted)">No report</td></tr>';return;}
+    h+='<tr><td><button type="button" class="repday" data-drep="day-'+x.d+'">'+lbl+'</button></td>'+
+      '<td style="text-align:right">'+usd(x.s.sales)+'</td><td style="text-align:right">'+usd(x.s.gas)+'</td><td style="text-align:right">'+usd(x.s.inside)+'</td>'+
+      '<td style="text-align:right">'+usd(x.s.pay)+'</td><td style="text-align:right">'+usd(x.s.cash)+'</td><td style="text-align:right">'+usd(x.s.cards)+'</td>'+
+      '<td style="text-align:right">'+usd(x.s.ebt)+'</td><td style="text-align:right">'+usd(x.s.gp)+'</td><td style="text-align:right">'+usd(x.s.exp)+'</td></tr>';
+  });
+  h+='<tr class="key"><td>Week total</td><td style="text-align:right">'+usd(tot.sales)+'</td><td style="text-align:right">'+usd(tot.gas)+'</td><td style="text-align:right">'+usd(tot.inside)+'</td><td style="text-align:right">'+usd(tot.pay)+'</td><td style="text-align:right">'+usd(tot.cash)+'</td><td style="text-align:right">'+usd(tot.cards)+'</td><td style="text-align:right">'+usd(tot.ebt)+'</td><td style="text-align:right">'+usd(tot.gp)+'</td><td style="text-align:right">'+usd(tot.exp)+'</td></tr>';
+  h+='</tbody></table></div></div>';
+  return {h:h,totals:{has:true,collected:tot.cash+tot.cards,sales:tot.sales,so:0}};
+}
+function renderDailyReports(){
+  var D=state.drep;
+  if(!D.date||!validDate(D.date))D.date=state.date;
+  if(!D.loaded&&!D.loading)drepLoad(false);
+  var d=D.date,h='';
+  h+='<div class="grid"><section class="card wide"><h2>Daily reports</h2><div class="repctl">';
+  h+='<div class="row2"><button type="button" class="btn" data-drep="prev-day" aria-label="Previous day">‹</button><label class="datepick" style="flex:1"><span>Show date</span><input type="date" data-drep-date value="'+d+'"></label><button type="button" class="btn" data-drep="next-day" aria-label="Next day">›</button><button type="button" class="btn" data-drep="today">Today</button><button type="button" class="btn" data-drep="refresh">Refresh</button></div>';
+  h+='<div class="seg" role="group" aria-label="Report view"><button type="button" class="btn" data-drep="mode-shift" aria-pressed="'+(D.mode==='shift')+'">Shift</button><button type="button" class="btn" data-drep="mode-day" aria-pressed="'+(D.mode==='day')+'">Whole day</button><button type="button" class="btn" data-drep="mode-week" aria-pressed="'+(D.mode==='week')+'">Week</button></div>';
+  if(D.mode==='shift'){
+    h+='<div class="seg" role="group" aria-label="Shift"><button type="button" class="btn" data-drep="shift-0" aria-pressed="'+(D.shift===0)+'">Shift 1</button><button type="button" class="btn" data-drep="shift-1" aria-pressed="'+(D.shift===1)+'">Shift 2</button><button type="button" class="btn" data-drep="shift-2" aria-pressed="'+(D.shift===2)+'">Shift 3</button></div>';
+  }
+  if(D.mode==='week'){
+    var ws=weekStartStr(d),we=addDaysStr(ws,6);
+    h+='<div class="row2"><button type="button" class="btn" data-drep="prev-week" aria-label="Previous week">‹ Week</button><span class="lbl">Week of '+fmtDay(ws)+' – '+fmtDay(we)+'</span><button type="button" class="btn" data-drep="next-week" aria-label="Next week">Week ›</button></div>';
+  }
+  if(D.loading)h+='<p class="note">Loading the daily reports from the sheets…</p>';
+  else if(D.error)h+='<p class="note">'+esc(D.error)+'</p>';
+  else if(D.updated)h+='<p class="note">Updated '+fmtUpTime(D.updated)+' from the closing-report sheets.</p>';
+  h+='</div></section></div>';
+  var res;
+  h+='<div class="grid" style="margin-top:16px">';
+  if(D.loaded){
+    if(D.mode==='shift')res=drepShiftView(d,D.shift);
+    else if(D.mode==='day')res=drepDayView(d);
+    else res=drepWeekView(d);
+    h+=res.h;
+    state.drepTotals=res.totals;
+  } else if(!D.loading){
+    h+='<div class="card"><h2>Daily reports</h2><p class="note">No report data loaded yet — tap Refresh.</p></div>';
+    state.drepTotals={has:false,collected:0,sales:0,so:0};
+  }
+  h+='</div>';
+  h+='<p class="note" style="margin-top:16px">These are the same numbers from the SuperSonic closing reports that go in the emailed reports. Cash, card and EBT come from the shift-sheet uploads when the owner has uploaded that day.</p>';
+  $('#main').innerHTML=h;
+}
+
 function renderTabs(){
   var h='';
-  for(var i=0;i<=N_SHIFTS+1;i++){
-    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':'Reports'))+'</span><span class="tm" id="tm'+i+'"></span></button>';
+  for(var i=0;i<=N_SHIFTS+2;i++){
+    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':'Daily Reports')))+'</span><span class="tm" id="tm'+i+'"></span></button>';
   }
   $('#tabs').innerHTML=h;
 }
@@ -770,6 +947,7 @@ function updateLive(){
   for(var i=0;i<N_SHIFTS;i++){var el=$('#tm'+i);if(el){var c=dc.cs[i],inf=soInfo(c.so,c.has);el.className='tm '+inf.cls;el.textContent=c.has?soText(c.so):'—';}}
   var te=$('#tm'+N_SHIFTS);if(te){var ti=soInfo(dc.so,dc.has);te.className='tm '+ti.cls;te.textContent=dc.has?soText(dc.so):'—';}
   var t4=$('#tm'+(N_SHIFTS+1));if(t4){var r4=state.repTotals||{has:false,so:0};var i4=soInfo(r4.so||0,r4.has);t4.className='tm '+i4.cls;t4.textContent=r4.has?soText(r4.so):'—';}
+  var t5=$('#tm'+(N_SHIFTS+2));if(t5){var r5=state.drepTotals||{has:false,so:0};var i5=soInfo(r5.so||0,r5.has);t5.className='tm '+i5.cls;t5.textContent=r5.has?soText(r5.so):'—';}
   /* current shift fields */
   if(state.tab<N_SHIFTS){
     var o=dc.cs[state.tab];
@@ -782,9 +960,10 @@ function updateLive(){
   /* bottom bar */
   var isDay=state.tab>=N_SHIFTS,c2;
   if(state.tab===N_SHIFTS+1){var rt=state.repTotals||{so:0,has:false,collected:0,sales:0};c2={so:rt.so,has:rt.has,collected:rt.collected,sales:rt.sales};}
+  else if(state.tab===N_SHIFTS+2){var rd=state.drepTotals||{so:0,has:false,collected:0,sales:0};c2={so:rd.so,has:rd.has,collected:rd.collected,sales:rd.sales};}
   else c2=isDay?{so:dc.so,has:dc.has,collected:dc.collected,sales:dc.sales}:dc.cs[state.tab];
   var bi=soInfo(c2.so,c2.has);
-  $('#barTitle').textContent=state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1));
+  $('#barTitle').textContent=state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1)));
   $('#barSub').textContent='Collected '+usd(c2.collected)+'  ·  Sales '+usd(c2.sales);
   var bn=$('#barNum');bn.className='bn '+bi.cls;bn.textContent=c2.has?soText(c2.so):'—';
   var bp=$('#barPill');bp.className='pill '+bi.cls;bp.textContent=bi.word;
@@ -814,7 +993,7 @@ function renderDates(){
 }
 function renderAll(){
   renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else renderReports();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else renderDailyReports();
   renderDates();updateLive();
   armed=false;var dd=$('#delDay');dd.textContent='Delete this day';dd.classList.remove('armed');
 }
@@ -906,7 +1085,8 @@ main.addEventListener('click',function(e){
 $('#tabs').addEventListener('click',function(e){
   var b=e.target.closest('[data-tab]');if(!b)return;
   state.tab=Number(b.dataset.tab);renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else renderReports();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else renderDailyReports();
+  if(state.tab===N_SHIFTS+2)drepLoad(false);
   updateLive();
   window.scrollTo({top:0});
 });
@@ -945,6 +1125,27 @@ main.addEventListener('change',function(e){
   var t=e.target;
   if(t.dataset&&t.dataset.repDate!==undefined&&state.tab===N_SHIFTS+1&&validDate(t.value)){state.rep.date=t.value;renderReports();updateLive();}
 });
+main.addEventListener('click',function(e){
+  var b=e.target.closest('[data-drep]');if(!b||state.tab!==N_SHIFTS+2)return;
+  var k=b.dataset.drep,D=state.drep;
+  if(k==='mode-shift'){D.mode='shift';}
+  else if(k==='mode-day'){D.mode='day';}
+  else if(k==='mode-week'){D.mode='week';}
+  else if(k==='today'){D.date=todayStr();}
+  else if(k==='prev-day'){D.date=addDaysStr(D.date,-1);}
+  else if(k==='next-day'){D.date=addDaysStr(D.date,1);}
+  else if(k==='prev-week'){D.date=addDaysStr(D.date,-7);}
+  else if(k==='next-week'){D.date=addDaysStr(D.date,7);}
+  else if(k==='refresh'){drepLoad(true);return;}
+  else if(k.indexOf('shift-')===0){D.shift=Number(k.slice(6));D.mode='shift';}
+  else if(k.indexOf('day-')===0){D.date=k.slice(4);D.mode='day';}
+  else return;
+  renderDailyReports();updateLive();
+});
+main.addEventListener('change',function(e){
+  var t=e.target;
+  if(t.dataset&&t.dataset.drepDate!==undefined&&state.tab===N_SHIFTS+2&&validDate(t.value)){state.drep.date=t.value;renderDailyReports();updateLive();}
+});
 $('#dates').addEventListener('click',function(e){var b=e.target.closest('[data-date]');if(b)openDate(b.dataset.date,false);});
 $('#datePick').addEventListener('change',function(e){if(e.target.value)openDate(e.target.value,true);});
 $('#todayBtn').addEventListener('click',function(){openDate(todayStr(),true);});
@@ -976,6 +1177,7 @@ function typing(){var a=document.activeElement;return a&&main.contains(a)&&/^(IN
 function refreshView(){
   if(state.tab===N_SHIFTS){renderDay();updateLive();return;}
   if(state.tab===N_SHIFTS+1){renderReports();updateLive();return;}
+  if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();return;}
   if(typing())updateLive();else{renderShift();updateLive();}
 }
 function startLocal(){
