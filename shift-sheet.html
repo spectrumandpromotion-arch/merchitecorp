@@ -308,7 +308,8 @@ function syncShift(date, idx){
       payOutsDetail: sh.payouts.map(function(x){return (x.cat||'')+': '+(x.desc||'')+' $'+num(x.amt);}).join('; '),
       fuelSales: c.fuel, merchSales: c.merch, tax: c.tax, lotterySales: c.lotSales,
       totalSales: c.sales, collected: c.collected, shortOver: c.so,
-      gas87gal: c.g87g, gas89gal: c.g89g, gas93gal: c.g93g, gasSales: c.gasAmt
+      gas87gal: c.g87g, gas89gal: c.g89g, gas93gal: c.g93g, gasSales: c.gasAmt,
+      gasProfit: c.gasProfit, gas87profit: c.g87p, gas89profit: c.g89p, gas93profit: c.g93p
     };
     return fetch(SYNC_URL, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload)})
       .then(function(){ return true; }).catch(function(){ return false; });
