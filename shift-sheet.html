@@ -545,7 +545,7 @@ function renderDay(){
   var rows=[
     ['grp','Money collected'],['Cash','cash'],['Credit','credit'],['Debit','debit'],['EBT','ebt'],['Coupons','coupons'],['Payouts','payT'],['Total collected','collected','key'],
     ['grp','Sales'],['Fuel','fuel'],['Merchandise','merch'],['Sales tax','tax'],['Lottery sold','lotSales'],['Total sales','sales','key'],
-    ['grp','Result'],['Cash short / over','so','key so']
+    ['grp','Result'],['Cash short / over','so','key so'],['Gas profit','gasProfit','key']
   ];
   var h='<div class="card"><h2>Day total</h2><div class="tbl"><table><thead><tr><th></th><th>Shift 1</th><th>Shift 2</th><th>Shift 3</th><th>Day</th></tr></thead><tbody>';
   h+='<tr><td>Cashier</td>'+day.shifts.map(function(s){return '<td style="font-family:var(--sans)">'+esc(s.name||'—')+'</td>';}).join('')+'<td></td></tr>';
@@ -820,10 +820,15 @@ function drepShiftView(d,idx){
     ['Tax collected',drepCell(r,11)],['Voids',drepCell(r,12)],['No sales',drepCell(r,13)],['EBT',drepCell(r,14)],['Pay outs',drepCell(r,15)],
     ['Expected cash',drepCell(r,16)],['Over',drepCell(r,17)],['Starting float',drepCell(r,18)],['Expected deposit to Safe',drepCell(r,19),'','key'],['Cash sales',drepCell(r,20)]
   ]);
+  var gp87=drepCell(r,34),gp89=drepCell(r,35),gp93=drepCell(r,36),gpT=drepCell(r,37);
+  var gpHas=gp87!==''||gp89!==''||gp93!==''||gpT!=='';
+  h+=drepCard('Gas profit',[
+    ['Gas profit 87',gp87||'$0.00'],['Gas profit 89',gp89||'$0.00'],['Gas profit 93',gp93||'$0.00'],['Gas profit total',gpT||'$0.00','','key']]);
+  if(!gpHas)h+='<div class="card"><p class="note">No gas profit recorded for this shift yet — it comes from the fuel cost and the gallons entered on Shift 3. Set the fuel cost and enter the gallons, then upload, and the profit shows here.</p></div>';
   if(drepHasShiftSheet(r)){
     h+=drepCard('Cash and card — shift sheet',[
       ['Cashier',drepCell(r,21)],['Cash counted',drepCell(r,22)],['Safe drops',drepCell(r,23)],['Credit',drepCell(r,24)],['Debit',drepCell(r,25)],['Cards total',drepCell(r,26)],['EBT',drepCell(r,27)],['Coupons',drepCell(r,28)],['Card fees',drepCell(r,29)],['Collected',drepCell(r,30),'','key'],['Short / over',drepCell(r,31)],['Expected deposit to Safe',drepCell(r,32),'','key'],
-      ['Gas profit 87',drepCell(r,34)],['Gas profit 89',drepCell(r,35)],['Gas profit 93',drepCell(r,36)],['Gas profit total',drepCell(r,37),'','key'],['Synced at',drepCell(r,33)?fmtUpTime(drepCell(r,33)):'']]);
+      ['Synced at',drepCell(r,33)?fmtUpTime(drepCell(r,33)):'']]);
   } else {
     h+='<div class="card"><h2>Cash and card — shift sheet</h2><p class="note">No shift-sheet data uploaded for this shift yet — cash, card and EBT appear here after the owner uploads the day from this website.</p></div>';
   }
