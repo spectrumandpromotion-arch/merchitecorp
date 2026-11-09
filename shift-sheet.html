@@ -289,7 +289,7 @@ function fmtOut(v,f){
 }
 
 /* ---------- state ---------- */
-var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[],profit:{}},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[],profEdit:false,profDraft:{}},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0},prof:{mode:'shift',shift:0,date:''},profTotals:{has:false,profit:0,sales:0}};
+var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[]},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0}};
 var mode='init',dbCol=null,dbSet=null;
 var dirty={},ver={},saving=false,saveTimer=null,armed=false,armTimer=null,resetArmed=false,resetTimer=null;
 function ensureDay(d){if(!state.days[d])state.days[d]=normDay(null);return state.days[d];}
@@ -390,10 +390,10 @@ function flush(){
 function saveSettings(which){
   if(mode==='db'&&dbSet){
     var g=state.settings.gas;
-    var data=which==='types'?{names:state.settings.types}:which==='cost'?{entries:state.settings.cost}:which==='profit'?{prices:state.settings.profit}:{g87:g.g87,g89:g.g89,g93:g.g93};
+    var data=which==='types'?{names:state.settings.types}:which==='cost'?{entries:state.settings.cost}:{g87:g.g87,g89:g.g89,g93:g.g93};
     setStatus('','Saving…');
     dbSet.doc(which==='types'?'payoutTypes':which==='cost'?'gasCost':'gas').set(data).then(function(){setStatus('ok','Saved');},function(){
-      setStatus('warn',which==='types'?"Couldn't save names. Only the owner can change them.":which==='cost'?"Couldn't save cost. Only the owner can change it.":which==='profit'?"Couldn't save profit prices. Only the owner can change them.":"Couldn't save prices.");});
+      setStatus('warn',which==='types'?"Couldn't save names. Only the owner can change them.":which==='cost'?"Couldn't save cost. Only the owner can change it.":"Couldn't save prices.");});
   }else{
     try{localStorage.setItem(LS_SET,JSON.stringify(state.settings));setStatus('ok','Saved on this device only');}
     catch(e){setStatus('warn',"Couldn't save.");}
@@ -411,11 +411,6 @@ function mergeSettings(src){
   }
   if(src.gas&&typeof src.gas==='object')GAS.forEach(function(g){
     var v=src.gas[g[0]];if(typeof v==='string'||typeof v==='number')state.settings.gas[g[0]]=String(v);});
-  if(src.profit&&typeof src.profit==='object'){
-    var np={};
-    Object.keys(src.profit).forEach(function(k){var e=src.profit[k];if(!e||typeof e!=='object')return;var buy=num(e.buy),sell=num(e.sell);if(buy>0||sell>0)np[k]={buy:r2(buy),sell:r2(sell),updated:typeof e.updated==='string'?e.updated:''};});
-    state.settings.profit=np;
-  }
 }
 function costFor(d,k){var best=null;state.settings.cost.forEach(function(e){if(e.d<=d&&(!best||e.d>best.d))best=e;});return best&&num(best[k])>0?best[k]:'';}
 function costSince(d){var best=null;state.settings.cost.forEach(function(e){if(e.d<=d&&(!best||e.d>best.d))best=e;});return best?best.d:'';}
@@ -795,14 +790,14 @@ function drepLoad(force){
     if(!j||!j.ok||!j.dailyClosing)throw new Error('bad response');
     state.drepData=j;D.loaded=true;D.error='';D.updated=j.generatedAt||new Date().toISOString();
     try{localStorage.setItem(DREP_LS,JSON.stringify({at:D.updated,data:j}));}catch(e){}
-    if(state.tab===N_SHIFTS+3){renderDailyReports();updateLive();}else if(state.tab===N_SHIFTS+1){renderProfit();updateLive();}
+    if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();}
   }).catch(function(){
     D.loading=false;
     var cached=null;
     try{cached=JSON.parse(localStorage.getItem(DREP_LS)||'null');}catch(e){}
     if(cached&&cached.data){state.drepData=cached.data;D.loaded=true;D.updated=cached.at;D.error='Showing the saved copy from '+fmtUpTime(cached.at)+' — could not reach the sheets.';}
     else D.error='Could not load the daily reports — check connection and tap Refresh.';
-    if(state.tab===N_SHIFTS+3){renderDailyReports();updateLive();}else if(state.tab===N_SHIFTS+1){renderProfit();updateLive();}
+    if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();}
   });
 }
 function drepCard(title,rows){
@@ -942,172 +937,10 @@ function renderDailyReports(){
   $('#main').innerHTML=h;
 }
 
-
-/* ---------- profit calculator tab (test feature: Z-Report category sales) ---------- */
-var PROF_CATS=[
-  ['beer','Beer'],
-  ['cigarettes','Cigarettes'],
-  ['juice','Juice'],
-  ['snack','Snacks & Chips'],
-  ['tobacco','Tobacco'],
-  ['water','Water'],
-  ['misc','Misc. No Tax'],
-  ['energy','Energy Drinks'],
-  ['wine','Wine'],
-  ['soda','Soda'],
-  ['smokeless','Smokeless Tobacco / Chew'],
-  ['dairy','Dairy Product'],
-  ['candy','Candy'],
-  ['grocery','Gen Grocery'],
-  ['phonecard','Phone Cards'],
-  ['txgroc','TX Groc'],
-  ['frozen','Frozen Pro'],
-  ['coffee','Coffee'],
-  ['cigars','Cigars']
-];
-var PROF_LS='gas-shift-sheet-profit-v1';
-function profRead(){try{var m=JSON.parse(localStorage.getItem(PROF_LS)||'{}');return m&&typeof m==='object'?m:{};}catch(e){return {};}}
-function profWrite(m){try{localStorage.setItem(PROF_LS,JSON.stringify(m));}catch(e){}}
-function profPrice(cat){var p=(state.settings.profit||{})[cat]||{};return {buy:num(p.buy),sell:num(p.sell),updated:p.updated||''};}
-function profHasPrice(cat){var pr=profPrice(cat);return pr.buy>0&&pr.sell>0;}
-function profMargin(cat){var pr=profPrice(cat);if(pr.sell<=0)return 0;return (pr.sell-pr.buy)/pr.sell;}
-function profShiftQty(d,idx,m){var day=(m||profRead())[d]||{};return day[idx]||{};}
-function profSetQty(d,idx,cat,v){var m=profRead();if(!m[d])m[d]={};if(!m[d][idx])m[d][idx]={};if(v>0)m[d][idx][cat]=r2(v);else delete m[d][idx][cat];profWrite(m);}
-function profShiftCalc(d,idx,m){
-  var qty=profShiftQty(d,idx,m),tot={qty:0,sales:0,profit:0,has:false};
-  PROF_CATS.forEach(function(c){
-    var q=num(qty[c[0]]),pr=profPrice(c[0]);
-    if(q>0)tot.has=true;
-    tot.qty=r2(tot.qty+q);
-    tot.sales=r2(tot.sales+q*pr.sell);
-    tot.profit=r2(tot.profit+q*(pr.sell-pr.buy));
-  });
-  return tot;
-}
-function profDayCalc(d,m){
-  var tot={qty:0,sales:0,profit:0,has:false};
-  for(var i=0;i<N_SHIFTS;i++){var s=profShiftCalc(d,i,m);tot.qty=r2(tot.qty+s.qty);tot.sales=r2(tot.sales+s.sales);tot.profit=r2(tot.profit+s.profit);if(s.has)tot.has=true;}
-  return tot;
-}
-function profInside(d,idx){var r=drepShiftRow(d,idx);if(!r)return null;return num(drepCell(r,10));}
-function profPricesCard(){
-  var ed=state.ui.profEdit,h='';
-  h+='<div class="card"><h2>Buy &amp; sell prices — set once, stays until you change it</h2>';
-  if(!ed){
-    h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $</th><th style="text-align:right">Profit / item</th><th style="text-align:right">Margin</th><th>Last changed</th></tr></thead><tbody>';
-    PROF_CATS.forEach(function(c){
-      var pr=profPrice(c[0]),hasP=profHasPrice(c[0]);
-      h+='<tr><td>'+c[1]+'</td><td style="text-align:right">'+(pr.buy>0?usd(pr.buy):'—')+'</td><td style="text-align:right">'+(pr.sell>0?usd(pr.sell):'—')+'</td><td style="text-align:right">'+(hasP?usd(r2(pr.sell-pr.buy)):'—')+'</td><td style="text-align:right">'+(hasP?(100*profMargin(c[0])).toFixed(1)+'%':'—')+'</td><td>'+(pr.updated||'—')+'</td></tr>';
-    });
-    h+='</tbody></table></div>';
-    h+='<p class="note">Prices are saved on this device only. Change them when a price changes — about once a month. Until then the same prices apply to every shift, day and week.</p>';
-    if(state.isOwner)h+='<div style="margin-top:12px"><button type="button" class="btn" data-prof="prices-edit">Edit prices</button></div>';
-  }else{
-    h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $</th></tr></thead><tbody>';
-    PROF_CATS.forEach(function(c){
-      var dr=state.ui.profDraft[c[0]]||{buy:'',sell:''};
-      h+='<tr><td>'+c[1]+'</td><td style="text-align:right"><div class="in"><i>$</i><input data-prof-price="'+c[0]+':buy" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+dr.buy+'"></div></td><td style="text-align:right"><div class="in"><i>$</i><input data-prof-price="'+c[0]+':sell" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+dr.sell+'"></div></td></tr>';
-    });
-    h+='</tbody></table></div>';
-    h+='<div style="margin-top:12px;display:flex;gap:8px"><button type="button" class="btn primary" data-prof="prices-save">Save prices</button><button type="button" class="btn" data-prof="prices-cancel">Cancel</button></div>';
-    h+='<p class="note">Leave a price blank if a category has no set price yet — its profit will show as $0.00 until you set one.</p>';
-  }
-  h+='</div>';
-  return h;
-}
-function profShiftView(d,idx){
-  var m=profRead(),qty=profShiftQty(d,idx,m),tot=profShiftCalc(d,idx,m),inside=profInside(d,idx);
-  var h='<div class="card"><h2>'+DREP_SHIFT_LABELS[idx]+' — '+fmtDayLong(d)+'</h2>';
-  h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Qty sold</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $</th><th style="text-align:right">Sales $</th><th style="text-align:right">Profit $</th></tr></thead><tbody>';
-  PROF_CATS.forEach(function(c){
-    var q=num(qty[c[0]]),pr=profPrice(c[0]),sales=r2(q*pr.sell),pf=r2(q*(pr.sell-pr.buy));
-    h+='<tr><td>'+c[1]+'</td><td style="text-align:right"><div class="in"><input data-prof-qty="'+c[0]+'" inputmode="decimal" autocomplete="off" placeholder="0" value="'+(q>0?String(q):'')+'"></div></td><td style="text-align:right">'+(pr.buy>0?usd(pr.buy):'—')+'</td><td style="text-align:right">'+(pr.sell>0?usd(pr.sell):'—')+'</td><td style="text-align:right">'+usd(sales)+'</td><td style="text-align:right">'+usd(pf)+'</td></tr>';
-  });
-  h+='<tr class="key"><td>Total</td><td style="text-align:right">'+tot.qty+'</td><td></td><td></td><td style="text-align:right">'+usd(tot.sales)+'</td><td style="text-align:right">'+usd(tot.profit)+'</td></tr>';
-  h+='</tbody></table></div>';
-  if(inside==null)h+='<p class="note">Inside sales total not loaded yet — tap Refresh above to load it from the sheets, then this line shows how much of the shift is accounted for.</p>';
-  else h+='<p class="note">Inside sales (Z-Report) '+usd(inside)+' · Categories entered '+usd(tot.sales)+' · Unaccounted '+usd(r2(inside-tot.sales))+'.</p>';
-  h+='<p class="note">Enter the quantity sold for each category from this shift Z-Report (Sales by Department). Profit is quantity x (sell - buy), just like fuel profit is gallons x (price - cost). Saved on this device only — test feature, nothing is sent to the sheets.</p></div>';
-  return {h:h,totals:{has:tot.has,profit:tot.profit,sales:tot.sales}};
-}
-function profDayView(d){
-  var m=profRead(),h='<div class="card"><h2>Whole day — '+fmtDayLong(d)+'</h2>';
-  h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Qty</th><th style="text-align:right">Sales $</th><th style="text-align:right">Profit $</th></tr></thead><tbody>';
-  var dayTot={qty:0,sales:0,profit:0,has:false},ins=[];
-  PROF_CATS.forEach(function(c){
-    var q=0,sa=0,pf=0,pr=profPrice(c[0]);
-    for(var i=0;i<N_SHIFTS;i++){var x=num(profShiftQty(d,i,m)[c[0]]);q=r2(q+x);sa=r2(sa+x*pr.sell);pf=r2(pf+x*(pr.sell-pr.buy));}
-    h+='<tr><td>'+c[1]+'</td><td style="text-align:right">'+q+'</td><td style="text-align:right">'+usd(sa)+'</td><td style="text-align:right">'+usd(pf)+'</td></tr>';
-  });
-  h+='</tbody></table></div></div>';
-  h+='<div class="card" style="margin-top:16px"><h2>Day totals</h2><div class="tbl"><table><thead><tr><th>Shift</th><th style="text-align:right">Qty</th><th style="text-align:right">Sales $</th><th style="text-align:right">Profit $</th></tr></thead><tbody>';
-  for(var i=0;i<N_SHIFTS;i++){
-    var sc=profShiftCalc(d,i,m);
-    dayTot.qty=r2(dayTot.qty+sc.qty);dayTot.sales=r2(dayTot.sales+sc.sales);dayTot.profit=r2(dayTot.profit+sc.profit);if(sc.has)dayTot.has=true;ins.push(profInside(d,i));
-    h+='<tr><td>'+DREP_SHIFT_LABELS[i]+'</td><td style="text-align:right">'+sc.qty+'</td><td style="text-align:right">'+usd(sc.sales)+'</td><td style="text-align:right">'+usd(sc.profit)+'</td></tr>';
-  }
-  h+='<tr class="key"><td>Day total</td><td style="text-align:right">'+dayTot.qty+'</td><td style="text-align:right">'+usd(dayTot.sales)+'</td><td style="text-align:right">'+usd(dayTot.profit)+'</td></tr>';
-  h+='</tbody></table></div>';
-  var insTot=null;if(ins[0]!=null||ins[1]!=null||ins[2]!=null)insTot=r2((ins[0]||0)+(ins[1]||0)+(ins[2]||0));
-  if(insTot==null)h+='<p class="note">Inside sales total not loaded yet — tap Refresh on the Profit tab to load it from the sheets.</p>';
-  else h+='<p class="note">Inside sales (Z-Report) '+usd(insTot)+' · Categories entered '+usd(dayTot.sales)+' · Unaccounted '+usd(r2(insTot-dayTot.sales))+'.</p>';
-  h+='</div>';
-  return {h:h,totals:{has:dayTot.has,profit:dayTot.profit,sales:dayTot.sales}};
-}
-function profWeekView(d){
-  var m=profRead(),ws=weekStartStr(d),h='<div class="card"><h2>Week of '+fmtDay(ws)+' – '+fmtDay(addDaysStr(ws,6))+'</h2>';
-  h+='<div class="tbl"><table><thead><tr><th>Day</th><th style="text-align:right">Qty</th><th style="text-align:right">Sales $</th><th style="text-align:right">Profit $</th><th style="text-align:right">Inside sales</th><th style="text-align:right">Accounted</th></tr></thead><tbody>';
-  var tot={qty:0,sales:0,profit:0,inside:0,hasInside:false};
-  for(var j=0;j<7;j++){
-    var dd=addDaysStr(ws,j),dc=profDayCalc(dd,m),ins=null;
-    for(var i=0;i<N_SHIFTS;i++){var v=profInside(dd,i);if(v!=null)ins=(ins||0)+v;}
-    var acc=(ins!=null&&ins>0)?(100*dc.sales/ins):null;
-    if(ins!=null){tot.inside=r2(tot.inside+ins);tot.hasInside=true;}
-    tot.qty=r2(tot.qty+dc.qty);tot.sales=r2(tot.sales+dc.sales);tot.profit=r2(tot.profit+dc.profit);
-    h+='<tr><td><button type="button" class="repday" data-prof="day-'+dd+'">'+toDate(dd).toLocaleDateString('en-US',{weekday:'short'})+' '+fmtDay(dd)+'</button></td><td style="text-align:right">'+dc.qty+'</td><td style="text-align:right">'+usd(dc.sales)+'</td><td style="text-align:right">'+usd(dc.profit)+'</td><td style="text-align:right">'+(ins==null?'—':usd(ins))+'</td><td style="text-align:right">'+(acc==null?'—':acc.toFixed(0)+'%')+'</td></tr>';
-  }
-  h+='<tr class="key"><td>Week total</td><td style="text-align:right">'+tot.qty+'</td><td style="text-align:right">'+usd(tot.sales)+'</td><td style="text-align:right">'+usd(tot.profit)+'</td><td style="text-align:right">'+(tot.hasInside?usd(tot.inside):'—')+'</td><td></td></tr>';
-  h+='</tbody></table></div>';
-  h+='<div class="tbl" style="margin-top:16px"><table><thead><tr><th>Category</th><th style="text-align:right">Qty</th><th style="text-align:right">Week sales</th><th style="text-align:right">Week profit</th></tr></thead><tbody>';
-  PROF_CATS.forEach(function(c){
-    var wq=0,wsa=0,wp=0,pr=profPrice(c[0]);
-    for(var j=0;j<7;j++){var dd=addDaysStr(ws,j);for(var i=0;i<N_SHIFTS;i++){var s=num(profShiftQty(dd,i,m)[c[0]]);wq=r2(wq+s);wsa=r2(wsa+s*pr.sell);wp=r2(wp+s*(pr.sell-pr.buy));}}
-    h+='<tr><td>'+c[1]+'</td><td style="text-align:right">'+wq+'</td><td style="text-align:right">'+usd(wsa)+'</td><td style="text-align:right">'+usd(wp)+'</td></tr>';
-  });
-  h+='</tbody></table></div></div>';
-  return {h:h,totals:{has:tot.sales>0,profit:tot.profit,sales:tot.sales}};
-}
-function renderProfit(){
-  var P=state.prof;
-  if(!P.date||!validDate(P.date))P.date=state.date;
-  var d=P.date,h='';
-  h+='<div class="grid"><section class="card wide"><h2>Profit calculator</h2><div class="repctl">';
-  h+='<div class="row2"><button type="button" class="btn" data-prof="prev-day" aria-label="Previous day">‹</button><label class="datepick" style="flex:1"><span>Show date</span><input type="date" data-prof-date value="'+d+'"></label><button type="button" class="btn" data-prof="next-day" aria-label="Next day">›</button><button type="button" class="btn" data-prof="today">Today</button><button type="button" class="btn" data-prof="refresh">Refresh</button></div>';
-  h+='<div class="seg" role="group" aria-label="Profit view"><button type="button" class="btn" data-prof="mode-shift" aria-pressed="'+(P.mode==='shift')+'">Shift</button><button type="button" class="btn" data-prof="mode-day" aria-pressed="'+(P.mode==='day')+'">Whole day</button><button type="button" class="btn" data-prof="mode-week" aria-pressed="'+(P.mode==='week')+'">Week</button></div>';
-  if(P.mode==='shift'){
-    h+='<div class="seg" role="group" aria-label="Shift"><button type="button" class="btn" data-prof="shift-0" aria-pressed="'+(P.shift===0)+'">Shift 1</button><button type="button" class="btn" data-prof="shift-1" aria-pressed="'+(P.shift===1)+'">Shift 2</button><button type="button" class="btn" data-prof="shift-2" aria-pressed="'+(P.shift===2)+'">Shift 3</button></div>';
-  }
-  if(P.mode==='week'){
-    var ws=weekStartStr(d),we=addDaysStr(ws,6);
-    h+='<div class="row2"><button type="button" class="btn" data-prof="prev-week" aria-label="Previous week">‹ Week</button><span class="lbl">Week of '+fmtDay(ws)+' – '+fmtDay(we)+'</span><button type="button" class="btn" data-prof="next-week" aria-label="Next week">Week ›</button></div>';
-  }
-  h+='</div></section></div>';
-  var res;
-  h+='<div class="grid" style="margin-top:16px">';
-  if(P.mode==='shift')res=profShiftView(d,P.shift);
-  else if(P.mode==='day')res=profDayView(d);
-  else res=profWeekView(d);
-  h+=res.h+'</div>';
-  state.profTotals={has:res.totals.has,profit:res.totals.profit,sales:res.totals.sales};
-  h+='<div class="grid" style="margin-top:16px">'+profPricesCard()+'</div>';
-  h+='<p class="note" style="margin-top:16px">Test feature: quantities come from the Z-Report (Sales by Department), like gallons on Shift 3. The sheets are only used for the inside-sales total above. Fuel profit is on Shift 3 / Reports — this tab covers the scanned goods.</p>';
-  $('#main').innerHTML=h;
-}
-
 function renderTabs(){
   var h='';
-  for(var i=0;i<=N_SHIFTS+3;i++){
-    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Profit':(i===N_SHIFTS+2?'Reports':'Daily Reports'))))+'</span><span class="tm" id="tm'+i+'"></span></button>';
+  for(var i=0;i<=N_SHIFTS+2;i++){
+    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':'Daily Reports')))+'</span><span class="tm" id="tm'+i+'"></span></button>';
   }
   $('#tabs').innerHTML=h;
 }
@@ -1121,9 +954,8 @@ function updateLive(){
   /* tab minis */
   for(var i=0;i<N_SHIFTS;i++){var el=$('#tm'+i);if(el){var c=dc.cs[i],inf=soInfo(c.so,c.has);el.className='tm '+inf.cls;el.textContent=c.has?soText(c.so):'—';}}
   var te=$('#tm'+N_SHIFTS);if(te){var ti=soInfo(dc.so,dc.has);te.className='tm '+ti.cls;te.textContent=dc.has?soText(dc.so):'—';}
-  var tP=$('#tm'+(N_SHIFTS+1));if(tP){var rp=profDayCalc(state.date);tP.className='tm';tP.textContent=rp.has?usd(rp.profit):'—';}
-  var t4=$('#tm'+(N_SHIFTS+2));if(t4){var r4=state.repTotals||{has:false,so:0};var i4=soInfo(r4.so||0,r4.has);t4.className='tm '+i4.cls;t4.textContent=r4.has?soText(r4.so):'—';}
-  var t5=$('#tm'+(N_SHIFTS+3));if(t5){var r5=state.drepTotals||{has:false,sales:0};t5.className='tm';t5.textContent=r5.has?usd(r5.sales||0):'—';}
+  var t4=$('#tm'+(N_SHIFTS+1));if(t4){var r4=state.repTotals||{has:false,so:0};var i4=soInfo(r4.so||0,r4.has);t4.className='tm '+i4.cls;t4.textContent=r4.has?soText(r4.so):'—';}
+  var t5=$('#tm'+(N_SHIFTS+2));if(t5){var r5=state.drepTotals||{has:false,sales:0};t5.className='tm';t5.textContent=r5.has?usd(r5.sales||0):'—';}
   /* current shift fields */
   if(state.tab<N_SHIFTS){
     var o=dc.cs[state.tab];
@@ -1135,13 +967,12 @@ function updateLive(){
   }
   /* bottom bar */
   var isDay=state.tab>=N_SHIFTS,c2;
-  if(state.tab===N_SHIFTS+1){var rp2=state.profTotals||{has:false,profit:0,sales:0};c2={so:rp2.profit,has:rp2.has,collected:rp2.profit,sales:rp2.sales};}
-  else if(state.tab===N_SHIFTS+2){var rt=state.repTotals||{so:0,has:false,collected:0,sales:0};c2={so:rt.so,has:rt.has,collected:rt.collected,sales:rt.sales};}
-  else if(state.tab===N_SHIFTS+3){var rd=state.drepTotals||{so:0,has:false,collected:0,sales:0};c2={so:rd.so,has:rd.has,collected:rd.collected,sales:rd.sales};}
+  if(state.tab===N_SHIFTS+1){var rt=state.repTotals||{so:0,has:false,collected:0,sales:0};c2={so:rt.so,has:rt.has,collected:rt.collected,sales:rt.sales};}
+  else if(state.tab===N_SHIFTS+2){var rd=state.drepTotals||{so:0,has:false,collected:0,sales:0};c2={so:rd.so,has:rd.has,collected:rd.collected,sales:rd.sales};}
   else c2=isDay?{so:dc.so,has:dc.has,collected:dc.collected,sales:dc.sales}:dc.cs[state.tab];
   var bi=soInfo(c2.so,c2.has);
-  $('#barTitle').textContent=state.tab===N_SHIFTS+3?'Daily Reports':(state.tab===N_SHIFTS+2?'Reports':(state.tab===N_SHIFTS+1?'Profit':(isDay?'Day total':'Shift '+(state.tab+1))));
-  $('#barSub').textContent=state.tab===N_SHIFTS+1?('Profit '+usd(c2.collected)+'  ·  Sales '+usd(c2.sales)):('Collected '+usd(c2.collected)+'  ·  Sales '+usd(c2.sales));
+  $('#barTitle').textContent=state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1)));
+  $('#barSub').textContent='Collected '+usd(c2.collected)+'  ·  Sales '+usd(c2.sales);
   var bn=$('#barNum');bn.className='bn '+bi.cls;bn.textContent=c2.has?soText(c2.so):'—';
   var bp=$('#barPill');bp.className='pill '+bi.cls;bp.textContent=bi.word;
   /* current date chip */
@@ -1170,7 +1001,7 @@ function renderDates(){
 }
 function renderAll(){
   renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderProfit();else if(state.tab===N_SHIFTS+2)renderReports();else renderDailyReports();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else renderDailyReports();
   renderDates();updateLive();
   armed=false;var dd=$('#delDay');dd.textContent='Delete this day';dd.classList.remove('armed');
 }
@@ -1262,14 +1093,13 @@ main.addEventListener('click',function(e){
 $('#tabs').addEventListener('click',function(e){
   var b=e.target.closest('[data-tab]');if(!b)return;
   state.tab=Number(b.dataset.tab);renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderProfit();else if(state.tab===N_SHIFTS+2)renderReports();else renderDailyReports();
-  if(state.tab===N_SHIFTS+3)drepLoad(false);
-  if(state.tab===N_SHIFTS+1)drepLoad(false);
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else renderDailyReports();
+  if(state.tab===N_SHIFTS+2)drepLoad(false);
   updateLive();
   window.scrollTo({top:0});
 });
 main.addEventListener('click',function(e){
-  var b=e.target.closest('[data-rep]');if(!b||state.tab!==N_SHIFTS+2)return;
+  var b=e.target.closest('[data-rep]');if(!b||state.tab!==N_SHIFTS+1)return;
   var k=b.dataset.rep,R=state.rep;
   if(k==='mode-shift'){R.mode='shift';}
   else if(k==='mode-day'){R.mode='day';}
@@ -1301,10 +1131,10 @@ main.addEventListener('click',function(e){
 });
 main.addEventListener('change',function(e){
   var t=e.target;
-  if(t.dataset&&t.dataset.repDate!==undefined&&state.tab===N_SHIFTS+2&&validDate(t.value)){state.rep.date=t.value;renderReports();updateLive();}
+  if(t.dataset&&t.dataset.repDate!==undefined&&state.tab===N_SHIFTS+1&&validDate(t.value)){state.rep.date=t.value;renderReports();updateLive();}
 });
 main.addEventListener('click',function(e){
-  var b=e.target.closest('[data-drep]');if(!b||state.tab!==N_SHIFTS+3)return;
+  var b=e.target.closest('[data-drep]');if(!b||state.tab!==N_SHIFTS+2)return;
   var k=b.dataset.drep,D=state.drep;
   if(k==='mode-shift'){D.mode='shift';}
   else if(k==='mode-day'){D.mode='day';}
@@ -1322,40 +1152,8 @@ main.addEventListener('click',function(e){
 });
 main.addEventListener('change',function(e){
   var t=e.target;
-  if(t.dataset&&t.dataset.drepDate!==undefined&&state.tab===N_SHIFTS+3&&validDate(t.value)){state.drep.date=t.value;renderDailyReports();updateLive();}
+  if(t.dataset&&t.dataset.drepDate!==undefined&&state.tab===N_SHIFTS+2&&validDate(t.value)){state.drep.date=t.value;renderDailyReports();updateLive();}
 });
-
-main.addEventListener('click',function(e){
-  var b=e.target.closest('[data-prof]');if(!b||state.tab!==N_SHIFTS+1)return;
-  var k=b.dataset.prof,P=state.prof;
-  if(k==='mode-shift'){P.mode='shift';}
-  else if(k==='mode-day'){P.mode='day';}
-  else if(k==='mode-week'){P.mode='week';}
-  else if(k==='today'){P.date=todayStr();}
-  else if(k==='prev-day'){P.date=addDaysStr(P.date,-1);}
-  else if(k==='next-day'){P.date=addDaysStr(P.date,1);}
-  else if(k==='prev-week'){P.date=addDaysStr(P.date,-7);}
-  else if(k==='next-week'){P.date=addDaysStr(P.date,7);}
-  else if(k==='refresh'){drepLoad(true);return;}
-  else if(k.indexOf('shift-')===0){P.shift=Number(k.slice(6));P.mode='shift';}
-  else if(k.indexOf('day-')===0){P.date=k.slice(4);P.mode='day';}
-  else if(k==='prices-edit'){if(!state.isOwner)return;state.ui.profEdit=true;state.ui.profDraft={};PROF_CATS.forEach(function(c){var pr=profPrice(c[0]);state.ui.profDraft[c[0]]={buy:pr.buy>0?String(pr.buy):'',sell:pr.sell>0?String(pr.sell):''};});}
-  else if(k==='prices-cancel'){state.ui.profEdit=false;}
-  else if(k==='prices-save'){
-    var np={};
-    PROF_CATS.forEach(function(c){var dr=state.ui.profDraft[c[0]]||{};var buy=num(dr.buy),sell=num(dr.sell);if(buy>0||sell>0)np[c[0]]={buy:r2(buy),sell:r2(sell),updated:todayStr()};});
-    state.settings.profit=np;state.ui.profEdit=false;saveSettings('profit');
-  }
-  else return;
-  renderProfit();updateLive();
-});
-main.addEventListener('change',function(e){
-  var t=e.target;
-  if(t.dataset&&t.dataset.profDate!==undefined&&state.tab===N_SHIFTS+1&&validDate(t.value)){state.prof.date=t.value;renderProfit();updateLive();return;}
-  if(t.dataset&&t.dataset.profQty!==undefined&&state.tab===N_SHIFTS+1){var P=state.prof;profSetQty(P.date,P.shift,t.dataset.profQty,num(t.value));renderProfit();updateLive();return;}
-  if(t.dataset&&t.dataset.profPrice!==undefined&&state.tab===N_SHIFTS+1){var parts=t.dataset.profPrice.split(':');var dr=state.ui.profDraft[parts[0]];if(dr)dr[parts[1]]=t.value;return;}
-});
-
 $('#dates').addEventListener('click',function(e){var b=e.target.closest('[data-date]');if(b)openDate(b.dataset.date,false);});
 $('#datePick').addEventListener('change',function(e){if(e.target.value)openDate(e.target.value,true);});
 $('#todayBtn').addEventListener('click',function(){openDate(todayStr(),true);});
@@ -1378,7 +1176,7 @@ $('#uploadBtn').addEventListener('click',function(){
     uploading=false;btn.disabled=false;
     if(ok){markUploaded(d);setStatus('ok','Uploaded to Sheets ✓ '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}));}
     else setStatus('warn','Upload failed — check connection and tap Upload to Sheets again.');
-    if(state.tab===N_SHIFTS+2){renderReports();updateLive();}
+    if(state.tab===N_SHIFTS+1){renderReports();updateLive();}
   });
 });
 
@@ -1386,9 +1184,8 @@ $('#uploadBtn').addEventListener('click',function(){
 function typing(){var a=document.activeElement;return a&&main.contains(a)&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName);}
 function refreshView(){
   if(state.tab===N_SHIFTS){renderDay();updateLive();return;}
-  if(state.tab===N_SHIFTS+1){renderProfit();updateLive();return;}
-  if(state.tab===N_SHIFTS+2){renderReports();updateLive();return;}
-  if(state.tab===N_SHIFTS+3){renderDailyReports();updateLive();return;}
+  if(state.tab===N_SHIFTS+1){renderReports();updateLive();return;}
+  if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();return;}
   if(typing())updateLive();else{renderShift();updateLive();}
 }
 function startLocal(){
@@ -1409,7 +1206,6 @@ function startDb(db){
       if(d.id==='payoutTypes')mergeSettings({types:v.names});
       if(d.id==='gas')mergeSettings({gas:v});
       if(d.id==='gasCost')mergeSettings({cost:v.entries});
-      if(d.id==='profitPrices')mergeSettings({profit:v.prices});
     });
     if(state.ui.gasEdit||state.ui.typesEdit)updateLive();else refreshView();
   },function(){});
@@ -1437,7 +1233,11 @@ function startDb(db){
 }
 function boot(){
   state.date=todayStr();ensureDay(state.date);
+  var h=location.hash||'';
+  if(h==='#reports')state.tab=N_SHIFTS+1;
+  else if(h==='#daily-reports')state.tab=N_SHIFTS+2;
   renderAll();
+  if(state.tab===N_SHIFTS+2)drepLoad(false);
   setStatus('','Loading…');
   var use=(window.claude&&window.claude.use)?window.claude.use.bind(window.claude):null;
   Promise.resolve(use?use('db'):null).then(function(db){
