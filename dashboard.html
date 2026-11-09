@@ -115,17 +115,51 @@
   ];
   var P={mode:'shift',shift:0,date:todayStr()};
   var profTotals={has:false,profit:0,sales:0};
-  var profEdit=false, profDraft={};
+  var profEdit=false, profDraft={}, profPricesOpen=false;
   var feed=null, feedLoaded=false, feedLoading=false, feedError='', feedUpdated='';
   function profRead(){try{var m=JSON.parse(localStorage.getItem(PROF_LS)||'{}');return m&&typeof m==='object'?m:{};}catch(e){return {};}}
   function profWrite(m){try{localStorage.setItem(PROF_LS,JSON.stringify(m));}catch(e){}}
   function readSettings(){try{var o=JSON.parse(localStorage.getItem(LS_SET)||'null');return o&&typeof o==='object'?o:{};}catch(e){return {};}}
   function readPrices(){var o=readSettings();return (o.profit&&typeof o.profit==='object')?o.profit:{};}
   function savePrices(np){var o=readSettings();o.profit=np;try{localStorage.setItem(LS_SET,JSON.stringify(o));}catch(e){}}
-  function profPrice(cat){var p=readPrices()[cat]||{};return {buy:num(p.buy),sell:num(p.sell),updated:p.updated||''};}
+  function profPrice(cat){var p=readPrices()[cat]||{};var buy=num(p.buy),sell=0,pct=null;if(p.sellPct!=null){pct=num(p.sellPct);if(pct>0&&pct<100&&buy>0)sell=r2(buy/(1-pct/100));}else sell=num(p.sell);return {buy:buy,sell:sell,sellPct:pct,updated:p.updated||''};}
   function profHasPrice(cat){var pr=profPrice(cat);return pr.buy>0&&pr.sell>0;}
   function profMargin(cat){var pr=profPrice(cat);if(pr.sell<=0)return 0;return (pr.sell-pr.buy)/pr.sell;}
-  function profShiftQty(d,idx,m){var day=(m||profRead())[d]||{};return day[idx]||{};}
+  function profSheetQty(d,idx){
+    var rows=(feed&&feed.departmentSales)||[];
+    if(!rows||rows.length<2)return null;
+    var want=drepNormDate(d);
+    for(var i=1;i<rows.length;i++){
+      var r=rows[i];
+      if(!r)continue;
+      var sh=Number(r[1]);
+      if(sh!==idx+1)continue;
+      var raw=String(r[0]==null?'':r[0]).trim();
+      var rd=drepNormDate(raw);
+      var ok=(rd===want||raw===want);
+      if(!ok){
+        var mu=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if(mu){var us=mu[3]+'-'+('0'+mu[1]).slice(-2)+'-'+('0'+mu[2]).slice(-2);if(us===want)ok=true;}
+      }
+      if(!ok)continue;
+      var out={};
+      PROF_CATS.forEach(function(c,ci){var q=num(r[2+ci]);if(q>0)out[c[0]]=q;});
+      return out;
+    }
+    return null;
+  }
+  function profShiftQty(d,idx,m){
+    var manual=((m||profRead())[d]||{})[idx]||{};
+    var sheet=profSheetQty(d,idx);
+    if(!sheet)return manual;
+    var out={};
+    PROF_CATS.forEach(function(c){
+      var mv=num(manual[c[0]]);
+      if(mv>0)out[c[0]]=mv;
+      else if(num(sheet[c[0]])>0)out[c[0]]=num(sheet[c[0]]);
+    });
+    return out;
+  }
   function profSetQty(d,idx,cat,v){var m=profRead();if(!m[d])m[d]={};if(!m[d][idx])m[d][idx]={};if(v>0)m[d][idx][cat]=r2(v);else delete m[d][idx][cat];profWrite(m);}
   function profShiftCalc(d,idx,m){
     var qty=profShiftQty(d,idx,m),tot={qty:0,sales:0,profit:0,has:false};
@@ -189,21 +223,25 @@
   }
   function profPricesCard(){
     var h='';
+    var setCount=0;
+    PROF_CATS.forEach(function(c){if(profHasPrice(c[0]))setCount++;});
     h+='<div class="card"><h2>Buy &amp; sell prices — set once, stays until you change it</h2>';
+    h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" data-prof="prices-toggle">'+(profPricesOpen?'Hide prices':'Show prices')+'</button><span class="muted">'+(setCount>0?setCount+' of '+PROF_CATS.length+' categories have prices set':'No prices set yet — open to set them')+'</span></div>';
+    if(!profPricesOpen){h+='</div>';return h;}
     if(!profEdit){
-      h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $</th><th style="text-align:right">Profit / item</th><th style="text-align:right">Margin</th><th>Last changed</th></tr></thead><tbody>';
+      h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell</th><th style="text-align:right">Profit / item</th><th style="text-align:right">Margin</th><th>Last changed</th></tr></thead><tbody>';
       PROF_CATS.forEach(function(c){
         var pr=profPrice(c[0]),hasP=profHasPrice(c[0]);
-        h+='<tr><td>'+c[1]+'</td><td style="text-align:right">'+(pr.buy>0?usd(pr.buy):'—')+'</td><td style="text-align:right">'+(pr.sell>0?usd(pr.sell):'—')+'</td><td style="text-align:right">'+(hasP?usd(r2(pr.sell-pr.buy)):'—')+'</td><td style="text-align:right">'+(hasP?(100*profMargin(c[0])).toFixed(1)+'%':'—')+'</td><td>'+(pr.updated||'—')+'</td></tr>';
+        h+='<tr><td>'+c[1]+'</td><td style="text-align:right">'+(pr.buy>0?usd(pr.buy):'—')+'</td><td style="text-align:right">'+(pr.sellPct!=null?(pr.sellPct.toFixed(1)+'%'+(pr.sell>0?' ('+usd(pr.sell)+')':'')):(pr.sell>0?usd(pr.sell):'—'))+'</td><td style="text-align:right">'+(hasP?usd(r2(pr.sell-pr.buy)):'—')+'</td><td style="text-align:right">'+(hasP?(100*profMargin(c[0])).toFixed(1)+'%':'—')+'</td><td>'+(pr.updated||'—')+'</td></tr>';
       });
       h+='</tbody></table></div>';
       h+='<p class="note">Prices are saved on this device only. Change them when a price changes — about once a month. Until then the same prices apply to every shift, day and week.</p>';
       h+='<div style="margin-top:12px"><button type="button" class="btn" data-prof="prices-edit">Edit prices</button></div>';
     }else{
-      h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $</th></tr></thead><tbody>';
+      h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $ / %</th></tr></thead><tbody>';
       PROF_CATS.forEach(function(c){
         var dr=profDraft[c[0]]||{buy:'',sell:''};
-        h+='<tr><td>'+c[1]+'</td><td style="text-align:right"><div class="in"><i>$</i><input data-prof-price="'+c[0]+':buy" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+dr.buy+'"></div></td><td style="text-align:right"><div class="in"><i>$</i><input data-prof-price="'+c[0]+':sell" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+dr.sell+'"></div></td></tr>';
+        h+='<tr><td>'+c[1]+'</td><td style="text-align:right"><div class="in"><i>$</i><input data-prof-price="'+c[0]+':buy" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+dr.buy+'"></div></td><td style="text-align:right"><div class="in"><input data-prof-price="'+c[0]+':sell" inputmode="decimal" autocomplete="off" placeholder="0.00 or 50%" value="'+dr.sell+'"></div></td></tr>';
       });
       h+='</tbody></table></div>';
       h+='<div style="margin-top:12px;display:flex;gap:8px"><button type="button" class="btn" data-prof="prices-save">Save prices</button><button type="button" class="btn btn-secondary" data-prof="prices-cancel">Cancel</button></div>';
@@ -214,6 +252,7 @@
   }
   function profShiftView(d,idx){
     var m=profRead(),qty=profShiftQty(d,idx,m),tot=profShiftCalc(d,idx,m),inside=profInside(d,idx);
+    var sheetQ=profSheetQty(d,idx);
     var h='<div class="card"><h2>'+DREP_SHIFT_LABELS[idx]+' — '+fmtDayLong(d)+'</h2>';
     h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Qty sold</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $</th><th style="text-align:right">Sales $</th><th style="text-align:right">Profit $</th></tr></thead><tbody>';
     PROF_CATS.forEach(function(c){
@@ -224,7 +263,8 @@
     h+='</tbody></table></div>';
     if(inside==null)h+='<p class="note">Inside sales total not loaded yet — tap Refresh above to load it from the sheets, then this line shows how much of the shift is accounted for.</p>';
     else h+='<p class="note">Inside sales (Z-Report) '+usd(inside)+' · Categories entered '+usd(tot.sales)+' · Unaccounted '+usd(r2(inside-tot.sales))+'.</p>';
-    h+='<p class="note">Enter the quantity sold for each category from this shift Z-Report (Sales by Department). Profit is quantity x (sell - buy), just like fuel profit is gallons x (price - cost). Saved on this device only — test feature, nothing is sent to the sheets.</p></div>';
+    if(sheetQ)h+='<p class="note">Quantities auto-filled from the sheets (Z-Report Sales by Department). Edit any number to override it — your edit is saved on this device.</p></div>';
+    else h+='<p class="note">Enter the quantity sold for each category from this shift Z-Report (Sales by Department). Profit is quantity x (sell - buy), just like fuel profit is gallons x (price - cost). Saved on this device only — test feature, nothing is sent to the sheets.</p></div>';
     return {h:h,totals:{has:tot.has,profit:tot.profit,sales:tot.sales}};
   }
   function profDayView(d){
@@ -316,11 +356,25 @@
     else if(k==='refresh'){feedLoad(true);return;}
     else if(k.indexOf('shift-')===0){P.shift=Number(k.slice(6));P.mode='shift';}
     else if(k.indexOf('day-')===0){P.date=k.slice(4);P.mode='day';}
-    else if(k==='prices-edit'){profEdit=true;profDraft={};PROF_CATS.forEach(function(c){var pr=profPrice(c[0]);profDraft[c[0]]={buy:pr.buy>0?String(pr.buy):'',sell:pr.sell>0?String(pr.sell):''};});}
+    else if(k==='prices-toggle'){profPricesOpen=!profPricesOpen;}
+    else if(k==='prices-edit'){profEdit=true;profDraft={};PROF_CATS.forEach(function(c){var pr=profPrice(c[0]);profDraft[c[0]]={buy:pr.buy>0?String(pr.buy):'',sell:pr.sellPct!=null?String(pr.sellPct)+'%':(pr.sell>0?String(pr.sell):'')};});}
     else if(k==='prices-cancel'){profEdit=false;}
     else if(k==='prices-save'){
       var np={};
-      PROF_CATS.forEach(function(c){var dr=profDraft[c[0]]||{};var buy=num(dr.buy),sell=num(dr.sell);if(buy>0||sell>0)np[c[0]]={buy:r2(buy),sell:r2(sell),updated:todayStr()};});
+      PROF_CATS.forEach(function(c){
+        var dr=profDraft[c[0]]||{};
+        var buy=num(dr.buy);
+        var sellRaw=String(dr.sell==null?'':dr.sell).trim();
+        var pct=null,sell=0;
+        if(sellRaw.indexOf('%')>=0){pct=num(sellRaw.replace(/%/g,''));}
+        else sell=num(sellRaw);
+        if(buy>0||sell>0||(pct!=null&&pct>0)){
+          var rec={buy:r2(buy),updated:todayStr()};
+          if(pct!=null&&pct>0&&pct<100)rec.sellPct=r2(pct);
+          else rec.sell=r2(sell);
+          np[c[0]]=rec;
+        }
+      });
       savePrices(np);profEdit=false;
     }
     else return;
