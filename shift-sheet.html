@@ -221,7 +221,7 @@ function blankShift(){
     credit:'',debit:'',ebt:'',coupons:'',fees:'',
     payouts:[{cat:state.settings.types[0]||'',desc:'',amt:''}],
     fuel:'',merch:'',tax:'',
-    lotI:'',lotO:'',
+    lotI:'',lotO:'',lotC:'',
     gas:{g87:{gal:'',pr:''},g89:{gal:'',pr:''},g93:{gal:'',pr:''}}};
 }
 function norm(src,base){
@@ -266,7 +266,8 @@ function calc(s,idx){
   o.merch=num(s.merch);o.tax=num(s.tax);
   o.lotI=isLot?num(s.lotI):0;
   o.lotO=isLot?num(s.lotO):0;
-  o.lotSales=r2(o.lotI+o.lotO);
+  o.lotC=isLot?num(s.lotC):0;
+  o.lotSales=r2(o.lotI+o.lotO+o.lotC);
   o.lotNet=r2(o.lotSales-o.payLot);
   o.sales=r2(o.fuel+o.merch+o.tax+o.lotSales);
   o.so=r2(o.collected-o.sales);
@@ -312,7 +313,7 @@ function syncShift(date, idx){
       ebt: c.ebt, coupons: c.coupons, fees: c.fees,
       payOutsTotal: c.payT,
       payOutsDetail: sh.payouts.map(function(x){return (x.cat||'')+': '+(x.desc||'')+' $'+num(x.amt);}).join('; '),
-      fuelSales: c.fuel, merchSales: c.merch, tax: c.tax, lotterySales: c.lotSales,
+      fuelSales: c.fuel, merchSales: c.merch, tax: c.tax, lotterySales: c.lotSales, lotteryCash: c.lotC,
       totalSales: c.sales, collected: c.collected, shortOver: c.so,
       gas87gal: c.g87g, gas89gal: c.g89g, gas93gal: c.g93g, gasSales: c.gasAmt,
       gasProfit: c.gasProfit, gas87profit: c.g87p, gas89profit: c.g89p, gas93profit: c.g93p
@@ -455,7 +456,7 @@ function renderShift(){
   h+='<div class="grid">';
   h+='<section class="card wide"><h2>Shift result</h2><div class="sum">'+
     '<div><h3>Money collected</h3>'+ln('Cash (drops + drawer + coins)','cash')+ln('Credit','credit')+ln('Debit','debit')+ln('EBT','ebt')+ln('Coupons','coupons')+ln('Payouts paid from drawer','payT')+ln('Total collected','collected',1)+'</div>'+
-    '<div><h3>Total sales</h3>'+ln('Fuel','fuel')+ln('Merchandise','merch')+ln('Sales tax','tax')+(state.tab===LOTTERY_SHIFT?ln('Lottery sold (instant + online)','lotSales'):'')+ln('Total sales','sales',1)+'</div>'+
+    '<div><h3>Total sales</h3>'+ln('Fuel','fuel')+ln('Merchandise','merch')+ln('Sales tax','tax')+(state.tab===LOTTERY_SHIFT?ln('Lottery sold (instant + online + cash)','lotSales'):'')+ln('Total sales','sales',1)+'</div>'+
     '</div><div class="result"><div><div class="rl">Cash short / over</div><div class="big" data-o="so" data-f="so" data-so></div></div><span class="pill" data-pill></span></div>'+
     '<p class="note">Short/over = total collected − total sales. A negative number is short, a positive number is over. Payouts count as money collected because that cash left the drawer.'+(state.tab===LOTTERY_SHIFT?'':' Gas report and lottery are only on Shift 3.')+'</p></section>';
 
@@ -530,7 +531,7 @@ function renderShift(){
 
   /* lottery: shift 3 only */
   if(state.tab===LOTTERY_SHIFT){
-    h+='<section class="card"><h2>Ohio lottery</h2><div class="stack"><div class="two keep">'+money('Instant','lotI')+money('Online','lotO')+'</div>'+
+    h+='<section class="card"><h2>Ohio lottery</h2><div class="stack"><div class="two keep">'+money('Instant','lotI')+money('Online','lotO')+money('Cash','lotC')+'</div>'+
       '<div class="tot"><span>Lottery sold</span><b data-o="lotSales"></b></div>'+
       '<div class="tot" style="border:0;padding:0"><span>Lottery cashes <small>(from Lottery payouts)</small></span><b data-o="payLot"></b></div>'+
       '<div class="tot" style="border:0;padding:0"><span>Net lottery</span><b data-o="lotNet"></b></div></div></section>';
@@ -637,7 +638,7 @@ function repShift(d,idx){
     g+='</div>';
     h+=g;
     h+=repCard('Ohio lottery',[
-      ['Instant',c.lotI],['Online',c.lotO],['Lottery sold',c.lotSales],['Lottery cashes',c.payLot],['Net lottery',c.lotNet,'','key']
+      ['Instant',c.lotI],['Online',c.lotO],['Cash',c.lotC],['Lottery sold',c.lotSales],['Lottery cashes',c.payLot],['Net lottery',c.lotNet,'','key']
     ]);
   } else {
     h+='<div class="card"><h2>Gas report</h2><p class="note">Gas report and lottery are entered on Shift 3.</p></div>';
