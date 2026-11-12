@@ -723,8 +723,8 @@ function repWeekView(d){
   h+='<div class="card"><h2>Pay outs this week — by payee</h2>';
   if(!pe.length)h+='<p class="note">No payouts this week.</p>';
   else{
-    h+='<div class="tbl"><table><thead><tr><th>Payee</th><th>Type</th><th style="text-align:right">Payments</th><th style="text-align:right">Total paid</th></tr></thead><tbody>';
-    pe.forEach(function(p){h+='<tr><td>'+esc(p.who)+'</td><td>'+esc(p.cat)+'</td><td style="text-align:right">'+p.n+'</td><td style="text-align:right">'+usd(p.total)+'</td></tr>';});
+    h+='<div class="tbl"><table><thead><tr><th>Payee</th><th>Type</th><th style="text-align:right">Payments</th><th style="text-align:right">Total paid</th><th>Settled</th></tr></thead><tbody>';
+    pe.forEach(function(p){h+='<tr><td>'+esc(p.who)+'</td><td>'+esc(p.cat)+'</td><td style="text-align:right">'+p.n+'</td><td style="text-align:right">'+usd(p.total)+'</td><td>'+settledPill(p.total,p.total)+'</td></tr>';});
     h+='</tbody></table></div>';
   }
   h+='</div>';
@@ -739,6 +739,21 @@ function drepDayPayOuts(d){
   }
   return any?{total:tot,n:n}:null;
 }
+function settledPill(debit,credit){
+  var d=r2(debit-credit);
+  if(Math.abs(d)<0.005)return '<span class="pill ok">Settled</span>';
+  return '<span class="pill short">Open '+usd(Math.abs(d))+'</span>';
+}
+function vendorTotals(items){
+  var map={},order=[];
+  items.forEach(function(x){
+    var k=x.desc;
+    if(!map[k]){map[k]={vendor:x.desc,debit:0,credit:0};order.push(k);}
+    var a=r2(num(x.amt));
+    map[k].debit=r2(map[k].debit+a);map[k].credit=r2(map[k].credit+a);
+  });
+  return order.map(function(k){return map[k];});
+}
 function vendorJournalHtml(d){
   var vd=vendorDayItems(d);
   var h='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>Vendor journal \u2014 '+fmtDayLong(d)+'</h2>';
@@ -752,6 +767,11 @@ function vendorJournalHtml(d){
       h+='<tr><td>'+fmtDay(d)+'</td><td>'+esc(x.desc)+'</td><td>'+esc(x.cat)+'</td><td style="text-align:right">'+usd(a)+'</td><td style="text-align:right">'+usd(a)+'</td></tr>';
     });
     h+='<tr class="key"><td colspan="3">Total</td><td style="text-align:right">'+usd(debitT)+'</td><td style="text-align:right">'+usd(creditT)+'</td></tr>';
+    h+='</tbody></table></div>';
+    h+='<h3 style="margin-top:16px">Settled by vendor</h3><div class="tbl"><table><thead><tr><th>Vendor</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th>Settled</th></tr></thead><tbody>';
+    vendorTotals(vd.items).forEach(function(v){
+      h+='<tr><td>'+esc(v.vendor)+'</td><td style="text-align:right">'+usd(v.debit)+'</td><td style="text-align:right">'+usd(v.credit)+'</td><td>'+settledPill(v.debit,v.credit)+'</td></tr>';
+    });
     h+='</tbody></table></div>';
     var bal=Math.abs(debitT-creditT)<0.005;
     h+='<p style="margin-top:12px"><span class="pill '+(bal?'ok':'short')+'">'+(bal?'Balanced':'Not balanced')+'</span></p>';
@@ -1043,9 +1063,9 @@ function renderVendors(){
   h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>This week — totals by vendor</h2><p class="note">Week of '+fmtDay(ws)+' – '+fmtDay(we)+'.</p>';
   if(!pe.length)h+='<p class="note">No vendor payments this week.</p>';
   else{
-    h+='<div class="tbl"><table><thead><tr><th>Vendor</th><th>Type</th><th style="text-align:right">Payments</th><th style="text-align:right">Total paid</th></tr></thead><tbody>';
-    pe.forEach(function(p){var who=p.who==='Unspecified'?(p.cat||'Unspecified'):p.who;h+='<tr><td>'+esc(who)+'</td><td>'+esc(p.cat)+'</td><td style="text-align:right">'+p.n+'</td><td style="text-align:right">'+usd(p.total)+'</td></tr>';});
-    h+='<tr class="key"><td>Week total</td><td></td><td></td><td style="text-align:right">'+usd(wtot)+'</td></tr>';
+    h+='<div class="tbl"><table><thead><tr><th>Vendor</th><th>Type</th><th style="text-align:right">Payments</th><th style="text-align:right">Total paid</th><th>Settled</th></tr></thead><tbody>';
+    pe.forEach(function(p){var who=p.who==='Unspecified'?(p.cat||'Unspecified'):p.who;h+='<tr><td>'+esc(who)+'</td><td>'+esc(p.cat)+'</td><td style="text-align:right">'+p.n+'</td><td style="text-align:right">'+usd(p.total)+'</td><td>'+settledPill(p.total,p.total)+'</td></tr>';});
+    h+='<tr class="key"><td>Week total</td><td></td><td></td><td style="text-align:right">'+usd(wtot)+'</td><td></td></tr>';
     h+='</tbody></table></div>';
   }
   h+='</div></div>';
