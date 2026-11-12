@@ -76,6 +76,7 @@ h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 .tab{flex:1;min-width:0;padding:10px 4px 8px;background:none;border:0;border-bottom:3px solid transparent;display:grid;gap:1px;justify-items:center;font-weight:600}
 .tab[aria-selected="true"]{border-bottom-color:var(--accent);color:var(--accent)}
 .tm{font:500 11px var(--mono);color:var(--muted)}
+@media (max-width:560px){.tab{font-size:12.5px;padding:10px 2px 8px}.tm{font-size:10px}}
 
 main{padding-top:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px;align-items:start}
@@ -292,7 +293,7 @@ function fmtOut(v,f){
 }
 
 /* ---------- state ---------- */
-var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[],vendEdit:false,vendDraft:[]},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0}};
+var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[],vendEdit:false,vendDraft:[]},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0},ai:{q:'',ans:'',asked:false}};
 var mode='init',dbCol=null,dbSet=null;
 var dirty={},ver={},saving=false,saveTimer=null,armed=false,armTimer=null,resetArmed=false,resetTimer=null;
 function ensureDay(d){if(!state.days[d])state.days[d]=normDay(null);return state.days[d];}
@@ -845,6 +846,7 @@ function drepLoad(force){
   if(!force&&state.drepData){D.loaded=true;return;}
   D.loading=true;D.error='';
   if(state.tab===N_SHIFTS+2)renderDailyReports();
+  else if(state.tab===N_SHIFTS+4)renderAskAi();
   drepFetch_(30000).then(function(j){
     D.loading=false;
     if(!j||!j.ok||!j.dailyClosing)throw new Error('bad response');
@@ -852,6 +854,7 @@ function drepLoad(force){
     try{localStorage.setItem(DREP_LS,JSON.stringify({at:D.updated,data:j}));}catch(e){}
     if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();}
     else if(state.tab===N_SHIFTS+1){renderReports();updateLive();}
+    else if(state.tab===N_SHIFTS+4){renderAskAi();updateLive();}
   }).catch(function(){
     D.loading=false;
     var cached=null;
@@ -860,6 +863,7 @@ function drepLoad(force){
     else D.error='Could not load the daily reports — check connection and tap Refresh.';
     if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();}
     else if(state.tab===N_SHIFTS+1){renderReports();updateLive();}
+    else if(state.tab===N_SHIFTS+4){renderAskAi();updateLive();}
   });
 }
 function drepCard(title,rows){
@@ -1089,10 +1093,420 @@ function renderVendors(){
   $('#main').innerHTML=h;
 }
 
+/* ---------- ask ai tab (rule-based answers from the system data only) ---------- */
+/* No AI service and no API key: every answer is computed on this device from
+   the closing-report sheets (the reports feed) and the pay-outs entered on
+   this website. If the answer is not in that data, the tab says so plainly
+   and never guesses. Whole profit needs buy prices, which live on the
+   Dashboard profit tool; until they are set, whole-profit questions are
+   answered with "buy prices are not set yet". */
+var AI_CATS=['Beer','Cigarettes','Juice','Snacks & Chips','Tobacco','Water','Misc. No Tax','Energy Drinks','Wine','Soda','Smokeless Tobacco / Chew','Dairy Product','Candy','Gen Grocery','Phone Cards','TX Groc','Frozen Pro','Coffee','Cigars'];
+var AI_CATKEYS=['beer','cigarettes','juice','snack','tobacco','water','misc','energy','wine','soda','smokeless','dairy','candy','grocery','phonecard','txgroc','frozen','coffee','cigars'];
+var AI_MONTHS={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+var AI_EXAMPLES=[
+  'What was my fuel profit yesterday?',
+  'What were my total sales yesterday?',
+  'How much cash did we collect yesterday?',
+  'What was my fuel profit last week?',
+  'What were my total sales last week?',
+  'Top departments yesterday?',
+  'Cigarettes yesterday?',
+  'Vendor totals this week?',
+  'What is my whole profit yesterday?'
+];
+function aiRows(key){var j=state.drepData;if(!j||!j[key]||!Array.isArray(j[key]))return [];return j[key].slice(1);}
+function aiDailyRows(d){return aiRows('dailyClosing').filter(function(r){return drepNormDate(r[0])===d;});}
+function aiWeekRow(ws){var rows=aiRows('weeklySummary');for(var i=0;i<rows.length;i++){if(drepNormDate(rows[i][0])!==ws)continue;var cm=String(rows[i][21]||'');if(/CUSTOM|NOT a Mon-Sun week/i.test(cm))continue;return rows[i];}return null;}
+function aiDeptRows(){return aiRows('departmentSales');}
+function aiShiftLabel(r){var s=String(r[1]||'');for(var i=0;i<N_SHIFTS;i++)if(s.indexOf(DREP_SHIFT_LABELS[i])===0)return DREP_SHIFT_LABELS[i];return 'Shift';}
+function aiParseDate(q){
+  var s=String(q||'').toLowerCase(),m;
+  if(/\byesterday\b/.test(s))return addDaysStr(todayStr(),-1);
+  if(/\btoday\b/.test(s))return todayStr();
+  m=s.match(/(\d{4})-(\d{2})-(\d{2})/);if(m)return m[1]+'-'+m[2]+'-'+m[3];
+  m=s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+'-'+pad(+m[1])+'-'+pad(+m[2]);
+  m=s.match(/(\d{1,2})\/(\d{1,2})(?!\d)/);if(m)return new Date().getFullYear()+'-'+pad(+m[1])+'-'+pad(+m[2]);
+  m=s.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})(?:\s*,?\s*(\d{4}))?/);
+  if(m)return (m[3]||new Date().getFullYear())+'-'+pad(AI_MONTHS[m[1]])+'-'+pad(+m[2]);
+  m=s.match(/(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(?:\s*,?\s*(\d{4}))?/);
+  if(m)return (m[3]||new Date().getFullYear())+'-'+pad(AI_MONTHS[m[2]])+'-'+pad(+m[1]);
+  return '';
+}
+function aiIsWeek(q){return /\bweek\b/.test(String(q||'').toLowerCase());}
+function aiWeekOf(d){var ws=weekStartStr(d);return {ws:ws,we:addDaysStr(ws,6)};}
+function aiWeekRange(q){
+  var s=String(q||'').toLowerCase();
+  if(/\blast week\b/.test(s)){var ws=weekStartStr(addDaysStr(todayStr(),-7));return {ws:ws,we:addDaysStr(ws,6)};}
+  var d=aiParseDate(q)||todayStr();
+  return aiWeekOf(d);
+}
+function aiCig(cm){var m=String(cm||'').match(/Cigarettes \$([\d,]+\.\d{2}) \((\d+)\)/);if(!m)return null;return {sales:num(m[1]),qty:num(m[2])};}
+function aiPrices(){try{var o=JSON.parse(localStorage.getItem(LS_SET)||'null');return (o&&o.profit&&typeof o.profit==='object')?o.profit:{};}catch(e){return {};}}
+function aiPriceFor(prices,key){
+  var p=prices[key]||{},buy=num(p.buy),sell=0;
+  if(p.sellPct!=null){var pct=num(p.sellPct);if(pct>0&&pct<100&&buy>0)sell=r2(buy/(1-pct/100));}
+  else sell=num(p.sell);
+  return {buy:buy,sell:sell,has:buy>0&&sell>0};
+}
+function aiSumDay(d){
+  var rows=aiDailyRows(d);
+  var t={n:0,sales:0,net:0,txns:0,gasGal:0,gasSales:0,inside:0,tax:0,voids:0,pay:0,cashCounted:0,drops:0,credit:0,debit:0,cards:0,ebt:0,collected:0,expDep:0,gp87:0,gp89:0,gp93:0,gp:0,hasSS:0,cigSales:0,cigQty:0};
+  rows.forEach(function(r){
+    t.n++;
+    t.sales=r2(t.sales+num(r[4]));t.net=r2(t.net+num(r[5]));t.txns+=num(r[6]);
+    t.gasGal=r2(t.gasGal+num(r[8]));t.gasSales=r2(t.gasSales+num(r[9]));t.inside=r2(t.inside+num(r[10]));
+    t.tax=r2(t.tax+num(r[11]));t.voids+=num(r[12]);t.pay=r2(t.pay+num(r[15]));
+    if(String(r[22]||'').trim()!==''){t.cashCounted=r2(t.cashCounted+num(r[22]));t.hasSS++;}
+    t.drops=r2(t.drops+num(r[23]));t.credit=r2(t.credit+num(r[24]));t.debit=r2(t.debit+num(r[25]));
+    t.cards=r2(t.cards+num(r[26]));t.ebt=r2(t.ebt+num(r[27]));t.collected=r2(t.collected+num(r[30]));
+    t.expDep=r2(t.expDep+num(r[32]));
+    t.gp87=r2(t.gp87+num(r[34]));t.gp89=r2(t.gp89+num(r[35]));t.gp93=r2(t.gp93+num(r[36]));t.gp=r2(t.gp+num(r[37]));
+    var cg=aiCig(r[38]);if(cg){t.cigSales=r2(t.cigSales+cg.sales);t.cigQty+=cg.qty;}
+  });
+  return t;
+}
+function aiSumWeek(ws){
+  var t={n:0,sales:0,gasSales:0,inside:0,pay:0,cashCounted:0,cards:0,ebt:0,collected:0,expDep:0,gp:0,cigSales:0,cigQty:0};
+  for(var j=0;j<7;j++){
+    var s=aiSumDay(addDaysStr(ws,j));if(!s.n)continue;
+    t.n++;
+    t.sales=r2(t.sales+s.sales);t.gasSales=r2(t.gasSales+s.gasSales);t.inside=r2(t.inside+s.inside);
+    t.pay=r2(t.pay+s.pay);t.cashCounted=r2(t.cashCounted+s.cashCounted);t.cards=r2(t.cards+s.cards);
+    t.ebt=r2(t.ebt+s.ebt);t.collected=r2(t.collected+s.collected);t.expDep=r2(t.expDep+s.expDep);
+    t.gp=r2(t.gp+s.gp);t.cigSales=r2(t.cigSales+s.cigSales);t.cigQty+=s.cigQty;
+  }
+  return t;
+}
+function aiDeptQty(d){
+  var out={},has=false;
+  aiDeptRows().forEach(function(r){
+    if(drepNormDate(r[0])!==d)return;
+    AI_CATS.forEach(function(c,ci){var q=num(r[2+ci]);if(q>0){out[c]=r2((out[c]||0)+q);has=true;}});
+  });
+  return {qty:out,has:has};
+}
+function aiDeptQtyWeek(ws){
+  var out={},has=false;
+  for(var j=0;j<7;j++){
+    var q=aiDeptQty(addDaysStr(ws,j));if(!q.has)continue;
+    has=true;
+    AI_CATS.forEach(function(c){if(q.qty[c])out[c]=r2((out[c]||0)+q.qty[c]);});
+  }
+  return {qty:out,has:has};
+}
+function aiCard(title,rows,note){
+  var h='<div class="card wide"><h2>'+esc(title)+'</h2><div class="tbl"><table><tbody>';
+  rows.forEach(function(r){
+    if(r[0]==='grp'){h+='<tr class="grp"><td colspan="2">'+esc(r[1])+'</td></tr>';return;}
+    var v=r[1]==null||String(r[1]).trim()===''?'—':esc(r[1]);
+    h+='<tr class="'+(r[2]||'')+'"><td>'+esc(r[0])+'</td><td>'+v+'</td></tr>';
+  });
+  return h+'</tbody></table></div>'+(note?'<p class="note">'+esc(note)+'</p>':'')+'</div>';
+}
+function aiFuel(q,d,isWeek){
+  if(isWeek){
+    var w=aiWeekRange(q),ws=w.ws,we=w.we,wr=aiWeekRow(ws);
+    if(wr){
+      return aiCard('Fuel profit — week of '+fmtDay(ws)+' – '+fmtDay(we),[
+        ['Gas profit total',usd(num(wr[33])),'','key'],
+        ['Gasoline sales',usd(num(wr[7]))],
+        ['Gasoline gallons',fmtOut(num(wr[6]),'gal')+' gal']
+      ],'From the Weekly Summary sheet. Gas profit is entered on Shift 3, from the fuel cost and the gallons sold.');
+    }
+    var t=aiSumWeek(ws);
+    if(!t.n)return aiCard('Fuel profit — week of '+fmtDay(ws)+' – '+fmtDay(we),[],'No closing reports for that week in the sheets yet.');
+    return aiCard('Fuel profit — week of '+fmtDay(ws)+' – '+fmtDay(we),[
+      ['Gas profit total',usd(t.gp),'','key'],
+      ['Gasoline sales',usd(t.gasSales)],
+      ['Days with reports',t.n+' of 7']
+    ],'Summed from the daily closing reports — the weekly sheet row is not written yet. Gas profit is entered on Shift 3.');
+  }
+  var dd=d||addDaysStr(todayStr(),-1),s=aiSumDay(dd);
+  if(!s.n)return aiCard('Fuel profit — '+fmtDayLong(dd),[],'No closing report for '+fmtDayLong(dd)+' in the sheets yet.');
+  var rows=[['grp','Per shift']];
+  aiDailyRows(dd).forEach(function(r){rows.push([aiShiftLabel(r)+' — gas profit',usd(num(r[37]))]);});
+  rows.push(['grp','Day total']);
+  rows.push(['Gas profit 87',usd(s.gp87)]);
+  rows.push(['Gas profit 89',usd(s.gp89)]);
+  rows.push(['Gas profit 93',usd(s.gp93)]);
+  rows.push(['Gas profit total',usd(s.gp),'','key']);
+  rows.push(['Gasoline sales',usd(s.gasSales)]);
+  rows.push(['Gasoline gallons',fmtOut(s.gasGal,'gal')+' gal']);
+  return aiCard('Fuel profit — '+fmtDayLong(dd),rows,'From the Daily Closing sheet. Gas profit is entered on Shift 3, from the fuel cost and the gallons sold; Shifts 1 and 2 show $0.00 unless a gas profit was recorded for them.');
+}
+function aiSales(q,d,isWeek){
+  if(isWeek){
+    var w=aiWeekRange(q),ws=w.ws,we=w.we,wr=aiWeekRow(ws);
+    if(wr){
+      return aiCard('Total sales — week of '+fmtDay(ws)+' – '+fmtDay(we),[
+        ['Total sales',usd(num(wr[2])),'','key'],['Net sales',usd(num(wr[3]))],['Transactions',String(num(wr[4]))],
+        ['Gasoline sales',usd(num(wr[7]))],['Inside sales',usd(num(wr[8]))],['Tax collected',usd(num(wr[9]))],
+        ['Pay outs',usd(num(wr[13]))],['Top department',String(wr[17]||'—')]
+      ],'From the Weekly Summary sheet.');
+    }
+    var t=aiSumWeek(ws);
+    if(!t.n)return aiCard('Total sales — week of '+fmtDay(ws)+' – '+fmtDay(we),[],'No closing reports for that week in the sheets yet.');
+    return aiCard('Total sales — week of '+fmtDay(ws)+' – '+fmtDay(we),[
+      ['Total sales',usd(t.sales),'','key'],['Gasoline sales',usd(t.gasSales)],['Inside sales',usd(t.inside)],
+      ['Pay outs',usd(t.pay)],['Days with reports',t.n+' of 7']
+    ],'Summed from the daily closing reports — the weekly sheet row is not written yet.');
+  }
+  var dd=d||addDaysStr(todayStr(),-1),s=aiSumDay(dd);
+  if(!s.n)return aiCard('Total sales — '+fmtDayLong(dd),[],'No closing report for '+fmtDayLong(dd)+' in the sheets yet.');
+  var rows=[['grp','Per shift']];
+  aiDailyRows(dd).forEach(function(r){rows.push([aiShiftLabel(r)+' — total sales',usd(num(r[4]))]);});
+  rows.push(['grp','Day total']);
+  rows.push(['Total sales',usd(s.sales),'','key']);
+  rows.push(['Net sales',usd(s.net)]);
+  rows.push(['Transactions',String(s.txns)]);
+  rows.push(['Gasoline sales',usd(s.gasSales)]);
+  rows.push(['Inside sales',usd(s.inside)]);
+  rows.push(['Tax collected',usd(s.tax)]);
+  rows.push(['Pay outs',usd(s.pay)]);
+  return aiCard('Total sales — '+fmtDayLong(dd),rows,'From the Daily Closing sheet.');
+}
+function aiCash(q,d,isWeek){
+  if(isWeek){
+    var w=aiWeekRange(q),ws=w.ws,we=w.we,wr=aiWeekRow(ws);
+    if(wr){
+      var hasSS=String(wr[22]||'').trim()!=='';
+      return aiCard('Cash collected — week of '+fmtDay(ws)+' – '+fmtDay(we),[
+        ['Cash counted',usd(num(wr[22]))],['Safe drops',usd(num(wr[23]))],
+        ['Cards total',usd(num(wr[26]))],['EBT',usd(num(wr[27]))],
+        ['Collected (total)',usd(num(wr[30])),'','key'],
+        ['Expected deposit to Safe',usd(num(wr[32]))]
+      ],hasSS?'From the Weekly Summary sheet, shift-sheet columns. Collected is cash + cards + EBT + coupons + pay outs.':'From the Weekly Summary sheet. No shift-sheet cash was uploaded for that week yet — cash, card and EBT appear after the owner uploads the days.');
+    }
+    var t=aiSumWeek(ws);
+    if(!t.n)return aiCard('Cash collected — week of '+fmtDay(ws)+' – '+fmtDay(we),[],'No closing reports for that week in the sheets yet.');
+    return aiCard('Cash collected — week of '+fmtDay(ws)+' – '+fmtDay(we),[
+      ['Cash counted',usd(t.cashCounted)],['Cards total',usd(t.cards)],['EBT',usd(t.ebt)],
+      ['Collected (total)',usd(t.collected),'','key'],['Expected deposit to Safe',usd(t.expDep)],
+      ['Days with reports',t.n+' of 7']
+    ],'Summed from the daily closing reports — the weekly sheet row is not written yet. Cash counted is $0.00 on days where no shift-sheet cash was uploaded.');
+  }
+  var dd=d||addDaysStr(todayStr(),-1),s=aiSumDay(dd);
+  if(!s.n)return aiCard('Cash collected — '+fmtDayLong(dd),[],'No closing report for '+fmtDayLong(dd)+' in the sheets yet.');
+  if(!s.hasSS)return aiCard('Cash collected — '+fmtDayLong(dd),[
+    ['Total sales',usd(s.sales)]
+  ],'The closing report is in, but no shift-sheet cash was uploaded for '+fmtDayLong(dd)+' yet — cash counted, cards and EBT appear here after the owner uploads the day from this website.');
+  var rows=[['grp','Per shift']];
+  aiDailyRows(dd).forEach(function(r){
+    rows.push([aiShiftLabel(r)+' — cash counted',usd(num(r[22]))]);
+    rows.push([aiShiftLabel(r)+' — collected',usd(num(r[30]))]);
+  });
+  rows.push(['grp','Day total']);
+  rows.push(['Cash counted',usd(s.cashCounted),'','key']);
+  rows.push(['Safe drops',usd(s.drops)]);
+  rows.push(['Cards total',usd(s.cards)]);
+  rows.push(['EBT',usd(s.ebt)]);
+  rows.push(['Collected (total)',usd(s.collected),'','key']);
+  rows.push(['Expected deposit to Safe',usd(s.expDep)]);
+  return aiCard('Cash collected — '+fmtDayLong(dd),rows,'From the Daily Closing sheet, shift-sheet columns. Collected is cash + cards + EBT + coupons + pay outs. Expected deposit = cash counted - pay outs - $300 float.');
+}
+function aiCigarettes(q,d,isWeek){
+  if(isWeek){
+    var w=aiWeekRange(q),ws=w.ws,we=w.we,t=aiSumWeek(ws);
+    var dq=aiDeptQtyWeek(ws);
+    if(!t.n)return aiCard('Cigarettes — week of '+fmtDay(ws)+' – '+fmtDay(we),[],'No closing reports for that week in the sheets yet.');
+    if(!t.cigQty&&!dq.qty['Cigarettes'])return aiCard('Cigarettes — week of '+fmtDay(ws)+' – '+fmtDay(we),[],'No cigarette sales recorded for that week in the sheets.');
+    return aiCard('Cigarettes — week of '+fmtDay(ws)+' – '+fmtDay(we),[
+      ['Cigarette sales',usd(t.cigSales),'','key'],
+      ['Cigarettes sold',t.cigQty+' packs'],
+      ['Days with reports',t.n+' of 7']
+    ],'Sales and packs from the Daily Closing comments. Quantities also come from the department sales (Z-Report).');
+  }
+  var dd=d||addDaysStr(todayStr(),-1),s=aiSumDay(dd);
+  if(!s.n)return aiCard('Cigarettes — '+fmtDayLong(dd),[],'No closing report for '+fmtDayLong(dd)+' in the sheets yet.');
+  var dq2=aiDeptQty(dd);
+  if(!s.cigQty&&!dq2.qty['Cigarettes'])return aiCard('Cigarettes — '+fmtDayLong(dd),[],'No cigarette sales recorded for '+fmtDayLong(dd)+' in the sheets.');
+  var rows=[['grp','Per shift']];
+  aiDailyRows(dd).forEach(function(r){var cg=aiCig(r[38]);if(cg)rows.push([aiShiftLabel(r),usd(cg.sales)+' · '+cg.qty+' packs']);});
+  rows.push(['grp','Day total']);
+  rows.push(['Cigarette sales',usd(s.cigSales),'','key']);
+  rows.push(['Cigarettes sold',s.cigQty+' packs']);
+  if(dq2.qty['Cigarettes'])rows.push(['Department qty (Z-Report)',dq2.qty['Cigarettes']+' packs']);
+  return aiCard('Cigarettes — '+fmtDayLong(dd),rows,'Sales and packs from the Daily Closing comments.');
+}
+function aiTopCard(title,qty,note){
+  var arr=AI_CATS.map(function(c){return {c:c,q:qty[c]||0};}).filter(function(x){return x.q>0;}).sort(function(a,b){return b.q-a.q;});
+  var tot=0;arr.forEach(function(x){tot+=x.q;});
+  var rows=arr.slice(0,10).map(function(x,i){return [(i+1)+'. '+x.c,x.q+' sold'];});
+  rows.push(['grp','Total']);
+  rows.push(['All categories',tot+' sold']);
+  return aiCard(title,rows,note);
+}
+function aiTopDept(q,d,isWeek){
+  if(isWeek){
+    var w=aiWeekRange(q),ws=w.ws,we=w.we;
+    var label='Top departments — week of '+fmtDay(ws)+' – '+fmtDay(we);
+    var dq=aiDeptQtyWeek(ws);
+    if(!dq.has)return aiCard(label,[],'No department quantities in the system for that week yet — quantities come from the Z-Report after each shift closes.');
+    var wr=aiWeekRow(ws),topLine='Quantities sold, from the department sales (Z-Report Sales by Department).';
+    if(wr&&String(wr[17]||'').trim())topLine='The Weekly Summary sheet names '+wr[17]+' as the top department. Quantities below are units sold, from the department sales.';
+    return aiTopCard(label,dq.qty,topLine);
+  }
+  var dd=d||addDaysStr(todayStr(),-1);
+  var dq2=aiDeptQty(dd);
+  var label2='Top departments — '+fmtDayLong(dd);
+  if(!dq2.has)return aiCard(label2,[],'No department quantities in the system for '+fmtDayLong(dd)+' yet — quantities come from the Z-Report after each shift closes.');
+  return aiTopCard(label2,dq2.qty,'Quantities sold, from the department sales (Z-Report Sales by Department).');
+}
+function aiExtractName(q){
+  var names=allVendorNames(),low=String(q||'').toLowerCase(),i;
+  for(i=0;i<names.length;i++){if(names[i]&&low.indexOf(names[i].toLowerCase())>=0)return names[i];}
+  var m=String(q).match(/\bto\s+([^,;]+?)(?:\s+on\s+|\s+for\s+|\s+yesterday|\s+today|\s*$)/i);
+  if(m&&m[1].trim())return m[1].trim();
+  var rest=String(q).replace(/\b(what|was|were|the|pay|paid|payout|payouts|pay\s?out|pay\s?outs|given|give|gave|to|did|do|i|have|has|on|for|this|that|day|yesterday|today|much|how|a|an|in|of|person|someone)\b/gi,' ');
+  rest=rest.replace(/\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(\/\d{4})?|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(\s*,?\s*\d{4})?/gi,' ').replace(/[^A-Za-z0-9 &\-\.]/g,' ').replace(/\s+/g,' ').trim();
+  return rest;
+}
+function aiPay(q,d){
+  var dd=d||addDaysStr(todayStr(),-1);
+  var name=aiExtractName(q);
+  if(/^(this|that|a|the)?\s*(person|someone|anyone|him|her|them)$/i.test(name))name='';
+  var day=state.days[dd],items=[],total=0;
+  if(day)day.shifts.forEach(function(s,i){
+    s.payouts.forEach(function(x){
+      var amt=num(x.amt);if(!amt)return;
+      items.push({cat:x.cat||'',desc:(x.desc||'').trim()||(x.cat||''),amt:amt,shift:i+1});
+    });
+  });
+  var s=aiSumDay(dd);
+  var totalLine=s.n?('The sheets show '+usd(s.pay)+' pay outs in total that day.'):'No closing report for '+fmtDayLong(dd)+' in the sheets yet.';
+  if(!items.length){
+    return aiCard('Pay outs — '+fmtDayLong(dd),[],'No pay-outs entered on this device for '+fmtDayLong(dd)+'. '+totalLine+' The sheets record pay-out totals only, not names — enter the day on the Shift Sheet and upload to see them here.');
+  }
+  if(!name){
+    var rows=[['grp','All pay outs that day']];
+    items.forEach(function(x){rows.push([x.desc+' (Shift '+x.shift+')',usd(x.amt)]);total=r2(total+num(x.amt));});
+    rows.push(['grp','Total']);
+    rows.push(['Pay outs that day',usd(total),'','key']);
+    return aiCard('Pay outs — '+fmtDayLong(dd),rows,'From the pay-outs entered on this device. '+totalLine);
+  }
+  var low=name.toLowerCase();
+  var hits=items.filter(function(x){return (x.desc||'').toLowerCase().indexOf(low)>=0||(x.cat||'').toLowerCase().indexOf(low)>=0;});
+  if(!hits.length){
+    return aiCard('Pay to '+name+' — '+fmtDayLong(dd),[],'No payment to '+name+' found on '+fmtDayLong(dd)+' in the pay-outs entered on this device. '+totalLine);
+  }
+  var rows2=[['grp','Payments to '+name]];
+  hits.forEach(function(x){rows2.push([x.desc+' · '+(x.cat||'')+' (Shift '+x.shift+')',usd(x.amt)]);total=r2(total+num(x.amt));});
+  rows2.push(['grp','Total']);
+  rows2.push(['Paid to '+name,usd(total),'','key']);
+  return aiCard('Pay to '+name+' — '+fmtDayLong(dd),rows2,'From the pay-outs entered on this device. '+totalLine);
+}
+function aiVendors(q,d,isWeek){
+  if(isWeek||!d){
+    var w=aiWeekRange(q),ws=w.ws,we=w.we;
+    var list=[];for(var j=0;j<7;j++){for(var k=0;k<N_SHIFTS;k++)list.push({d:addDaysStr(ws,j),idx:k});}
+    var pe=payeeTotals(list);
+    if(!pe.length)return aiCard('Vendor totals — week of '+fmtDay(ws)+' – '+fmtDay(we),[],'No vendor payments entered on this device for that week. The sheets record pay-out totals only, not names — enter the days on the Shift Sheet and upload to see them here.');
+    var rows=pe.map(function(p){var who=p.who==='Unspecified'?(p.cat||'Unspecified'):p.who;return [who+' · '+(p.cat||''),usd(p.total)+' · '+p.n+' payment'+(p.n>1?'s':'')];});
+    var wt=r2(sum(pe.map(function(p){return p.total;})));
+    rows.push(['grp','Week total']);
+    rows.push(['All vendors',usd(wt),'','key']);
+    return aiCard('Vendor totals — week of '+fmtDay(ws)+' – '+fmtDay(we),rows,'From the pay-outs entered on this device.');
+  }
+  var dd=d,vd=vendorDayItems(dd);
+  if(!vd.has)return aiCard('Vendor totals — '+fmtDayLong(dd),[],'No vendor payments entered on this device for '+fmtDayLong(dd)+'.');
+  var rows2=vd.items.map(function(x){return [x.desc+' · '+(x.cat||'')+' (Shift '+x.shift+')',usd(num(x.amt))];});
+  rows2.push(['grp','Day total']);
+  rows2.push(['All vendors',usd(vd.total),'','key']);
+  return aiCard('Vendor totals — '+fmtDayLong(dd),rows2,'From the pay-outs entered on this device.');
+}
+function aiWholeProfit(q,d,isWeek){
+  var prices=aiPrices(),priced=0;
+  AI_CATKEYS.forEach(function(k){if(aiPriceFor(prices,k).has)priced++;});
+  var label,dq;
+  if(isWeek){
+    var w=aiWeekRange(q);
+    label='Whole profit — week of '+fmtDay(w.ws)+' – '+fmtDay(w.we);
+    dq=aiDeptQtyWeek(w.ws);
+  }else{
+    var dd=d||addDaysStr(todayStr(),-1);
+    label='Whole profit — '+fmtDayLong(dd);
+    dq=aiDeptQty(dd);
+  }
+  if(!priced){
+    return aiCard(label,[],'Buy prices are not set yet — whole profit cannot be worked out until the buy and sell prices are set on the Dashboard, under Profit, Show prices, Edit prices. The quantities sold are in the system; the prices are not. Gas and fuel profit is separate — ask about fuel profit for that.');
+  }
+  if(!dq.has){
+    return aiCard(label,[],'No department quantities in the system for that period yet — quantities come from the Z-Report after each shift closes. Buy prices are set for '+priced+' of '+AI_CATS.length+' categories.');
+  }
+  var sales=0,profit=0,unpriced=[];
+  AI_CATS.forEach(function(c,ci){
+    var qty=dq.qty[c]||0;if(!qty)return;
+    var pr=aiPriceFor(prices,AI_CATKEYS[ci]);
+    if(pr.has){sales=r2(sales+qty*pr.sell);profit=r2(profit+qty*(pr.sell-pr.buy));}
+    else unpriced.push(c+' ('+qty+' sold)');
+  });
+  var rows=[['grp','Categories with prices set']];
+  rows.push(['Sales',usd(sales)]);
+  rows.push(['Profit',usd(profit),'','key']);
+  rows.push(['Profit ratio',sales>0?(100*profit/sales).toFixed(1)+'%':'—']);
+  if(unpriced.length){
+    rows.push(['grp','No buy price set yet']);
+    unpriced.forEach(function(u){rows.push([u,'—']);});
+  }
+  return aiCard(label,rows,'Profit = quantity sold x (sell - buy), from the Z-Report quantities and the buy and sell prices set on the Dashboard. Gas and fuel are excluded — ask about fuel profit for that.');
+}
+function aiFallback(q){
+  var h='<div class="card wide"><h2>Ask AI</h2><p class="note">I can only answer from what is in this system — the closing-report sheets and the pay-outs entered on this website. I do not guess beyond that. Try one of these:</p><div class="seg" role="group" aria-label="Example questions">';
+  AI_EXAMPLES.forEach(function(x){h+='<button type="button" class="btn" data-ai="ex" data-q="'+esc(x)+'">'+esc(x)+'</button>';});
+  h+='</div></div>';
+  return h;
+}
+function aiAnswer(q){
+  var low=String(q||'').toLowerCase();
+  if(!state.drepData){
+    if(state.drep.loading)return '<div class="card wide"><h2>Ask AI</h2><p class="note">The reports are still loading from the sheets — tap Ask again in a moment.</p></div>';
+    return '<div class="card wide"><h2>Ask AI</h2><p class="note">No report data loaded yet — tap Refresh data, then ask again.</p></div>';
+  }
+  var d=aiParseDate(q),isWeek=aiIsWeek(q);
+  if(/fuel|gas/.test(low)&&/profit/.test(low))return aiFuel(q,d,isWeek);
+  if(/profit/.test(low))return aiWholeProfit(q,d,isWeek);
+  if(/cigarette/.test(low))return aiCigarettes(q,d,isWeek);
+  if(/top/.test(low)&&/department|seller|selling/.test(low))return aiTopDept(q,d,isWeek);
+  if(/pay|paid|payout|pay ?out/.test(low))return aiPay(q,d);
+  if(/vendor/.test(low))return aiVendors(q,d,isWeek);
+  if(/cash|collect|counted|deposit|safe/.test(low))return aiCash(q,d,isWeek);
+  if(/sale/.test(low))return aiSales(q,d,isWeek);
+  return aiFallback(q);
+}
+function renderAskAi(){
+  var D=state.drep;
+  var curQ=document.getElementById('ai-q');
+  if(curQ&&curQ.value)state.ai.q=curQ.value;
+  if(!D.loaded&&!D.loading)drepLoad(false);
+  var A=state.ai;
+  var h='<div class="grid"><section class="card wide"><h2>Ask AI — answers from this system only</h2>';
+  h+='<p class="note">Ask about sales, fuel profit, cash, pay outs, vendors, departments and cigarettes. Answers come only from the closing-report sheets and the pay-outs entered on this website — never guessed. No AI service is used and nothing is sent anywhere; this runs free, on this device.</p>';
+  h+='<div class="repctl"><div class="row2"><div class="in txt" style="flex:1"><input id="ai-q" type="text" autocomplete="off" placeholder="e.g. What was my fuel profit yesterday?" value="'+esc(A.q)+'"></div><button type="button" class="btn primary" data-ai="ask">Ask</button><button type="button" class="btn" data-ai="refresh">Refresh data</button></div>';
+  h+='<div class="seg" role="group" aria-label="Example questions">';
+  AI_EXAMPLES.forEach(function(x){h+='<button type="button" class="btn" data-ai="ex" data-q="'+esc(x)+'">'+esc(x)+'</button>';});
+  h+='</div>';
+  if(D.loading)h+='<p class="note">Loading the reports from the sheets…</p>';
+  else if(D.error)h+='<p class="note">'+esc(D.error)+'</p>';
+  else if(D.updated)h+='<p class="note">Reports updated '+fmtUpTime(D.updated)+' from the closing-report sheets.</p>';
+  h+='</div></section></div>';
+  if(A.asked)h+='<div class="grid" style="margin-top:16px" id="ai-ans">'+A.ans+'</div>';
+  h+='<p class="note" style="margin-top:16px">Whole profit needs buy prices — set them on the Dashboard, under Profit. Until then, whole-profit questions are answered with "buy prices are not set yet". Gas and fuel profit is separate.</p>';
+  $('#main').innerHTML=h;
+}
+function aiAsk(){
+  var inp=document.getElementById('ai-q');
+  var q=inp?inp.value.trim():'';
+  state.ai.q=q;state.ai.asked=true;
+  if(!q){state.ai.ans='<div class="card wide"><h2>Ask AI</h2><p class="note">Type a question first — for example, "What was my fuel profit yesterday?"</p></div>';}
+  else state.ai.ans=aiAnswer(q);
+  renderAskAi();updateLive();
+  var el=document.getElementById('ai-ans');if(el&&el.scrollIntoView)try{el.scrollIntoView({block:'nearest'});}catch(e){}
+}
+
 function renderTabs(){
   var h='';
-  for(var i=0;i<=N_SHIFTS+3;i++){
-    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':(i===N_SHIFTS+2?'Daily Reports':'Vendors'))))+'</span><span class="tm" id="tm'+i+'"></span></button>';
+  for(var i=0;i<=N_SHIFTS+4;i++){
+    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':(i===N_SHIFTS+2?'Daily Reports':(i===N_SHIFTS+3?'Vendors':'Ask AI')))))+'</span><span class="tm" id="tm'+i+'"></span></button>';
   }
   $('#tabs').innerHTML=h;
 }
@@ -1124,7 +1538,7 @@ function updateLive(){
   else if(state.tab===N_SHIFTS+2){var rd=state.drepTotals||{so:0,has:false,collected:0,sales:0};c2={so:rd.so,has:rd.has,collected:rd.collected,sales:rd.sales};}
   else c2=isDay?{so:dc.so,has:dc.has,collected:dc.collected,sales:dc.sales}:dc.cs[state.tab];
   var bi=soInfo(c2.so,c2.has);
-  $('#barTitle').textContent=state.tab===N_SHIFTS+3?'Vendors':(state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1))));
+  $('#barTitle').textContent=state.tab===N_SHIFTS+4?'Ask AI':(state.tab===N_SHIFTS+3?'Vendors':(state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1)))));
   $('#barSub').textContent='Collected '+usd(c2.collected)+'  ·  Sales '+usd(c2.sales);
   var bn=$('#barNum');bn.className='bn '+bi.cls;bn.textContent=c2.has?soText(c2.so):'—';
   var bp=$('#barPill');bp.className='pill '+bi.cls;bp.textContent=bi.word;
@@ -1154,7 +1568,7 @@ function renderDates(){
 }
 function renderAll(){
   renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else renderVendors();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else if(state.tab===N_SHIFTS+3)renderVendors();else renderAskAi();
   renderDates();updateLive();
   armed=false;var dd=$('#delDay');dd.textContent='Delete this day';dd.classList.remove('armed');
 }
@@ -1253,8 +1667,8 @@ main.addEventListener('click',function(e){
 $('#tabs').addEventListener('click',function(e){
   var b=e.target.closest('[data-tab]');if(!b)return;
   state.tab=Number(b.dataset.tab);renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else renderVendors();
-  if(state.tab===N_SHIFTS+2)drepLoad(false);
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else if(state.tab===N_SHIFTS+3)renderVendors();else renderAskAi();
+  if(state.tab===N_SHIFTS+2||state.tab===N_SHIFTS+4)drepLoad(false);
   updateLive();
   window.scrollTo({top:0});
 });
@@ -1326,6 +1740,16 @@ main.addEventListener('click',function(e){
     renderVendors();updateLive();return;
   }
 });
+main.addEventListener('click',function(e){
+  var b=e.target.closest('[data-ai]');if(!b||state.tab!==N_SHIFTS+4)return;
+  var k=b.dataset.ai;
+  if(k==='ask'){aiAsk();return;}
+  if(k==='refresh'){drepLoad(true);renderAskAi();updateLive();return;}
+  if(k==='ex'){var inp=document.getElementById('ai-q');if(inp)inp.value=b.dataset.q||'';aiAsk();return;}
+});
+main.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&e.target&&e.target.id==='ai-q'&&state.tab===N_SHIFTS+4){e.preventDefault();aiAsk();}
+});
 $('#dates').addEventListener('click',function(e){var b=e.target.closest('[data-date]');if(b)openDate(b.dataset.date,false);});
 $('#datePick').addEventListener('change',function(e){if(e.target.value)openDate(e.target.value,true);});
 $('#todayBtn').addEventListener('click',function(){openDate(todayStr(),true);});
@@ -1359,6 +1783,7 @@ function refreshView(){
   if(state.tab===N_SHIFTS+1){renderReports();updateLive();return;}
   if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();return;}
   if(state.tab===N_SHIFTS+3){renderVendors();updateLive();return;}
+  if(state.tab===N_SHIFTS+4){renderAskAi();updateLive();return;}
   if(typing())updateLive();else{renderShift();updateLive();}
 }
 function startLocal(){
@@ -1410,6 +1835,7 @@ function boot(){
   if(h==='#reports')state.tab=N_SHIFTS+1;
   else if(h==='#daily-reports')state.tab=N_SHIFTS+2;
   else if(h==='#vendors')state.tab=N_SHIFTS+3;
+  else if(h==='#ask-ai')state.tab=N_SHIFTS+4;
   renderAll();
   if(state.tab===N_SHIFTS+2)drepLoad(false);
   setStatus('','Loading…');
