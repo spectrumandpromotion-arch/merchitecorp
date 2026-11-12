@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vendors — Merchitecorp</title>
+<link rel="stylesheet" href="style.css">
+<style>
+/* Vendors — same look as the dashboard: one working column of cards.
+   Vendor payments come from the pay-outs entered on the Shift Sheet
+   (this device's saved data), grouped by day and by week. */
+#vendors .card{margin-bottom:16px}
+#vendors .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px}
+#vendors .tbl{overflow-x:auto}
+#vendors table{width:100%;border-collapse:collapse;font-size:14px}
+#vendors th,#vendors td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
+#vendors th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+#vendors tr.key td{font-weight:700;background:#f8fafc}
+#vendors .seg{display:flex;gap:6px;flex-wrap:wrap}
+#vendors .seg .btn[aria-pressed="true"]{background:var(--bg);color:#fff}
+#vendors .repctl{display:grid;gap:10px}
+#vendors .row2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#vendors .datepick span{display:block;font-size:12px;color:var(--muted);font-weight:600}
+#vendors .lbl{font-weight:600}
+#vendors .note{margin:10px 0 0}
+</style>
+</head>
+<body>
+<header><div class="nav">
+<a class="brand" href="index.html">Merchitecorp <span>• Spectrum and Promotion</span></a>
+<nav><a class="link" href="index.html">Home</a><a class="link" href="dashboard.html">Dashboard</a><a class="link" href="shift-sheet.html">Shift Sheet</a><a class="link" href="login.html">Log in</a></nav>
+</div></header>
+<main>
+<div class="hero"><h1>Vendors</h1><p>Vendor payments for Uptown Shell, by day and by week — who was paid and how much. The list comes from the pay-outs entered on the Shift Sheet.</p>
+<p><a class="btn" href="dashboard.html">Back to Dashboard</a> &nbsp; <a class="btn btn-secondary" href="shift-sheet.html">Open Shift Sheet</a></p></div>
+<section>
+<div id="vendors"><p class="muted">Loading vendors…</p></div>
+</section>
+</main>
+<footer>© Merchitecorp — Spectrum and Promotion · <a href="mailto:spectrumandpromotion@gmail.com">spectrumandpromotion@gmail.com</a></footer>
+<script>
+// Guard: if there is no login flag in this browser, send the visitor to the login page.
+(function () {
+  var session = null;
+  try { session = JSON.parse(sessionStorage.getItem('merchitecorp_session') || 'null'); } catch (err) {}
+  if (!session || !session.email) { window.location.href = 'login.html'; return; }
+})();
+</script>
+<script>
+/* Vendors — a separate dashboard for vendor payments.
+   Source of the list: the pay-outs entered on the Shift Sheet. The Shift
+   Sheet saves them on this device (localStorage 'gas-shift-sheet-v1') as
+   { 'YYYY-MM-DD': { shifts: [ { payouts: [{cat, desc, amt}] } ] } }.
+   The same payments are also sent to the Google Sheets vendor list when
+   "Upload to Sheets" is tapped on the Shift Sheet, so the website and the
+   sheets stay in step. This page also tries the sheets feed
+   (?action=vendors) and falls back to this device's data if the feed is
+   not available — it never shows an error for the missing feed. */
+(function(){
+  var sess=null; try{ sess=JSON.parse(sessionStorage.getItem('merchitecorp_session')||'null'); }catch(e){}
+  if(!sess||!sess.email) return;
+  var SYNC_URL='https://script.google.com/macros/s/AKfycbxjongQ5prQyIv9lP4kv-55cpiWcQhxikBVcuCpWC2s7ij7GTHDmn0Q_cohPZQtqy5_Cg/exec';
+  var LS_KEY='gas-shift-sheet-v1';
+  var N_SHIFTS=3;
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function num(v){var n=parseFloat(String(v==null?'':v).replace(/[$,\s]/g,''));return isFinite(n)?n:0;}
+  function r2(x){return Math.round((x+1e-9)*100)/100;}
+  function sum(a){return a.reduce(function(t,x){return t+x;},0);}
+  function usd(x){var v=r2(x);var s=Math.abs(v).toLocaleString('en-US',{style:'currency',currency:'USD'});return v<0?'−'+s:s;}
+  function pad(n){return (n<10?'0':'')+n;}
+  function toDate(s){var p=String(s||'').split('-');return new Date(+p[0],(+p[1]||1)-1,+p[2]||1);}
+  function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+  function validDate(s){return /^\d{4}-\d{2}-\d{2}$/.test(s)&&!isNaN(toDate(s).getTime());}
+  function addDaysStr(d,n){var dt=toDate(d);dt.setDate(dt.getDate()+n);return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());}
+  function weekStartStr(d){var dt=toDate(d);var dow=(dt.getDay()+6)%7;dt.setDate(dt.getDate()-dow);return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());}
+  function fmtDay(d){return toDate(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});}
+  function fmtDayLong(d){return toDate(d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});}
+  function weekdayShort(d){return toDate(d).toLocaleDateString('en-US',{weekday:'short'});}
+
+  var P={date:todayStr()};
+  var feedRows=null; /* payments from the sheets feed, when it answers */
+
+  /* ---- data: this device's Shift Sheet data (primary) ---- */
+  function readLocalDays(){
+    var raw=null;
+    try{raw=JSON.parse(localStorage.getItem(LS_KEY)||'null');}catch(e){raw=null;}
+    if(!raw||typeof raw!=='object')return {};
+    /* The Shift Sheet stores a flat date map {'YYYY-MM-DD': {shifts:[...]}};
+       accept a {days:{...}} wrapper too, just in case. */
+    if(raw.days&&typeof raw.days==='object')return raw.days;
+    return raw;
+  }
+  function paymentsFromDays(days){
+    var list=[];
+    Object.keys(days||{}).forEach(function(d){
+      if(!validDate(d))return;
+      var day=days[d];if(!day||!Array.isArray(day.shifts))return;
+      day.shifts.forEach(function(sh,idx){
+        if(!sh||!Array.isArray(sh.payouts))return;
+        sh.payouts.forEach(function(x){
+          var amt=num(x&&x.amt);
+          if(!amt)return;
+          var desc=String((x&&x.desc)||'').trim();
+          var cat=String((x&&x.cat)||'').trim();
+          list.push({date:d,shift:idx+1,vendor:desc||cat||'Unspecified',type:cat,amount:r2(amt)});
+        });
+      });
+    });
+    return list;
+  }
+  /* ---- data: sheets feed (?action=vendors), when it exists ----
+     Accepts either an array of objects {date, shift, vendor, type, amount}
+     or Sync-style rows [date, shift, ..., payOutsTotal, payOutsDetail]
+     where the detail reads like "PR-BE:  $300" or
+     "FOOD:  $10; PAINT:  $360". Anything else is ignored. */
+  function parseDetail(detail,date,shift){
+    var out=[];
+    String(detail||'').split(';').forEach(function(part){
+      var m=part.match(/^\s*([^:]+):\s*(.*?)\s*\$([\d,]+(?:\.\d+)?)\s*$/);
+      if(!m)return;
+      var amt=num(m[3]);
+      if(!amt)return;
+      var cat=m[1].trim();
+      var desc=m[2].trim();
+      out.push({date:date,shift:shift,vendor:desc||cat||'Unspecified',type:cat,amount:r2(amt)});
+    });
+    return out;
+  }
+  function paymentsFromFeed(j){
+    if(!j||typeof j!=='object')return null;
+    var rows=j.vendors||j.payouts||j.rows;
+    if(!Array.isArray(rows))return null;
+    var list=[];
+    rows.forEach(function(r){
+      if(!r)return;
+      if(Array.isArray(r)){
+        if(!validDate(r[0]))return;
+        var detail=r.length>12?r[12]:r[r.length-1];
+        list=list.concat(parseDetail(detail,r[0],Number(r[1])||0));
+      }else if(typeof r==='object'){
+        var d=String(r.date||r[0]||'');
+        if(!validDate(d))return;
+        var amt=num(r.amount!=null?r.amount:r.amt);
+        if(!amt)return;
+        var desc=String(r.vendor||r.desc||r.payee||'').trim();
+        var cat=String(r.type||r.cat||'').trim();
+        list.push({date:d,shift:Number(r.shift)||0,vendor:desc||cat||'Unspecified',type:cat,amount:r2(amt)});
+      }
+    });
+    return list;
+  }
+  function feedLoad(){
+    if(typeof AbortController!=='undefined'){
+      var ctl=new AbortController();
+      var t=setTimeout(function(){try{ctl.abort();}catch(e){}},10000);
+      fetch(SYNC_URL+'?action=vendors',{signal:ctl.signal}).then(function(res){clearTimeout(t);return res.json();}).then(function(j){
+        var list=paymentsFromFeed(j);
+        if(list&&list.length){feedRows=list;render();}
+      }).catch(function(){/* feed not there yet — stay on this device's data */});
+      return;
+    }
+    fetch(SYNC_URL+'?action=vendors').then(function(res){return res.json();}).then(function(j){
+      var list=paymentsFromFeed(j);
+      if(list&&list.length){feedRows=list;render();}
+    }).catch(function(){/* feed not there yet — stay on this device's data */});
+  }
+
+  /* ---- data used by the page ---- */
+  function allPayments(){
+    if(feedRows&&feedRows.length)return feedRows;
+    return paymentsFromDays(readLocalDays());
+  }
+  function weekPayments(ws){
+    var all=allPayments(),out=[];
+    for(var i=0;i<7;i++){
+      var dd=addDaysStr(ws,i);
+      all.forEach(function(p){if(p.date===dd)out.push(p);});
+    }
+    return out;
+  }
+
+  /* ---- render ---- */
+  function render(){
+    var d=P.date;
+    if(!d||!validDate(d)){P.date=todayStr();d=P.date;}
+    var ws=weekStartStr(d),we=addDaysStr(ws,6);
+    var wp=weekPayments(ws);
+    var dayList=wp.filter(function(p){return p.date===d;});
+    var dayTotal=r2(sum(dayList.map(function(p){return p.amount;})));
+    var h='';
+    h+='<div class="card"><h2>Vendors — week of '+fmtDay(ws)+' – '+fmtDay(we)+'</h2><div class="repctl">';
+    h+='<div class="row2"><button type="button" class="btn" data-v="prev-week" aria-label="Previous week">‹ Week</button><label class="datepick" style="flex:1"><span>Show date</span><input type="date" data-v-date value="'+d+'"></label><button type="button" class="btn" data-v="next-week" aria-label="Next week">Week ›</button><button type="button" class="btn" data-v="today">Today</button></div>';
+    h+='<div class="seg" role="group" aria-label="Day of the week">';
+    for(var i=0;i<7;i++){
+      var dd=addDaysStr(ws,i);
+      h+='<button type="button" class="btn" data-v="day-'+dd+'" aria-pressed="'+(dd===d)+'">'+weekdayShort(dd)+' '+fmtDay(dd)+'</button>';
+    }
+    h+='</div></div></div>';
+    h+='<div class="card"><h2>'+fmtDayLong(d)+'</h2>';
+    if(!dayList.length){
+      h+='<p class="note">No vendor payments this day.</p>';
+    }else{
+      h+='<div class="tbl"><table><thead><tr><th>Vendor</th><th>Type</th><th>Shift</th><th style="text-align:right">Amount</th></tr></thead><tbody>';
+      dayList.forEach(function(p){
+        h+='<tr><td>'+esc(p.vendor)+'</td><td>'+esc(p.type||'—')+'</td><td>'+(p.shift>0?('Shift '+p.shift):'—')+'</td><td style="text-align:right">'+usd(p.amount)+'</td></tr>';
+      });
+      h+='<tr class="key"><td>Day total</td><td></td><td></td><td style="text-align:right">'+usd(dayTotal)+'</td></tr>';
+      h+='</tbody></table></div>';
+    }
+    h+='</div>';
+    h+='<div class="card"><h2>Week totals by vendor — '+fmtDay(ws)+' – '+fmtDay(we)+'</h2>';
+    if(!wp.length){
+      h+='<p class="note">No vendor payments this week.</p>';
+    }else{
+      var map={},order=[];
+      wp.forEach(function(p){
+        var key=p.vendor+''+p.type;
+        if(!map[key]){map[key]={vendor:p.vendor,type:p.type,total:0,n:0};order.push(key);}
+        map[key].total=r2(map[key].total+p.amount);map[key].n++;
+      });
+      var rows=order.map(function(k){return map[k];}).sort(function(a,b){return b.total-a.total;});
+      var weekTotal=r2(sum(rows.map(function(r){return r.total;})));
+      h+='<div class="tbl"><table><thead><tr><th>Vendor</th><th>Type</th><th style="text-align:right">Payments</th><th style="text-align:right">Total Paid</th></tr></thead><tbody>';
+      rows.forEach(function(r){
+        h+='<tr><td>'+esc(r.vendor)+'</td><td>'+esc(r.type||'—')+'</td><td style="text-align:right">'+r.n+'</td><td style="text-align:right">'+usd(r.total)+'</td></tr>';
+      });
+      h+='<tr class="key"><td>Week total</td><td></td><td></td><td style="text-align:right">'+usd(weekTotal)+'</td></tr>';
+      h+='</tbody></table></div>';
+    }
+    h+='</div>';
+    h+='<p class="note">This list comes from the pay-outs entered on the Shift Sheet on this device. Tapping “Upload to Sheets” on the Shift Sheet sends the same payments to the Google Sheets vendor list, so the website and the sheets stay in step.</p>';
+    document.getElementById('vendors').innerHTML=h;
+  }
+  var box=document.getElementById('vendors');
+  box.addEventListener('click',function(e){
+    var b=e.target.closest('[data-v]');if(!b)return;
+    var k=b.dataset.v;
+    if(k==='today'){P.date=todayStr();}
+    else if(k==='prev-week'){P.date=addDaysStr(P.date,-7);}
+    else if(k==='next-week'){P.date=addDaysStr(P.date,7);}
+    else if(k.indexOf('day-')===0){P.date=k.slice(4);}
+    else return;
+    render();
+  });
+  box.addEventListener('change',function(e){
+    var t=e.target;
+    if(t.dataset&&t.dataset.vDate!==undefined&&validDate(t.value)){P.date=t.value;render();}
+  });
+  feedLoad();
+  render();
+})();
+</script>
+</body>
+</html>
