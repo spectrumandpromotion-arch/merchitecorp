@@ -943,10 +943,45 @@ function renderDailyReports(){
   $('#main').innerHTML=h;
 }
 
+/* ---------- vendors tab ---------- */
+function vendorDayItems(d){
+  var day=state.days[d],items=[],total=0;
+  if(day)day.shifts.forEach(function(s,i){
+    s.payouts.forEach(function(x){
+      if(num(x.amt))items.push({cat:x.cat||'',desc:(x.desc||'').trim()?x.desc:(x.cat||''),amt:x.amt,shift:i+1});
+    });
+  });
+  items.forEach(function(x){total=r2(total+num(x.amt));});
+  return {items:items,total:total,has:items.length>0};
+}
+function renderVendors(){
+  var d=state.date;
+  var vd=vendorDayItems(d);
+  var h='<div class="grid"><div class="card wide"><h2>Vendors paid — '+fmtDayLong(d)+'</h2>';
+  h+=vd.has?repPayoutList(vd.items):'<p class="note">No vendor payments this day.</p>';
+  if(vd.has)h+='<div class="tot"><span>Day total</span><b>'+usd(vd.total)+'</b></div>';
+  h+='</div></div>';
+  var ws=weekStartStr(d),we=addDaysStr(ws,6);
+  var list=[];for(var j=0;j<7;j++){for(var k=0;k<N_SHIFTS;k++)list.push({d:addDaysStr(ws,j),idx:k});}
+  var pe=payeeTotals(list);
+  var wtot=r2(sum(pe.map(function(p){return p.total;})));
+  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>This week — totals by vendor</h2><p class="note">Week of '+fmtDay(ws)+' – '+fmtDay(we)+'.</p>';
+  if(!pe.length)h+='<p class="note">No vendor payments this week.</p>';
+  else{
+    h+='<div class="tbl"><table><thead><tr><th>Vendor</th><th>Type</th><th style="text-align:right">Payments</th><th style="text-align:right">Total paid</th></tr></thead><tbody>';
+    pe.forEach(function(p){var who=p.who==='Unspecified'?(p.cat||'Unspecified'):p.who;h+='<tr><td>'+esc(who)+'</td><td>'+esc(p.cat)+'</td><td style="text-align:right">'+p.n+'</td><td style="text-align:right">'+usd(p.total)+'</td></tr>';});
+    h+='<tr class="key"><td>Week total</td><td></td><td></td><td style="text-align:right">'+usd(wtot)+'</td></tr>';
+    h+='</tbody></table></div>';
+  }
+  h+='</div></div>';
+  h+='<p class="note" style="margin-top:16px">From the pay-outs entered on the Shift Sheet. Tap Upload to Sheets to send the same payments to the Google Sheets vendor list.</p>';
+  $('#main').innerHTML=h;
+}
+
 function renderTabs(){
   var h='';
-  for(var i=0;i<=N_SHIFTS+2;i++){
-    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':'Daily Reports')))+'</span><span class="tm" id="tm'+i+'"></span></button>';
+  for(var i=0;i<=N_SHIFTS+3;i++){
+    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':(i===N_SHIFTS+2?'Daily Reports':'Vendors'))))+'</span><span class="tm" id="tm'+i+'"></span></button>';
   }
   $('#tabs').innerHTML=h;
 }
@@ -962,6 +997,7 @@ function updateLive(){
   var te=$('#tm'+N_SHIFTS);if(te){var ti=soInfo(dc.so,dc.has);te.className='tm '+ti.cls;te.textContent=dc.has?soText(dc.so):'—';}
   var t4=$('#tm'+(N_SHIFTS+1));if(t4){var r4=state.repTotals||{has:false,so:0};var i4=soInfo(r4.so||0,r4.has);t4.className='tm '+i4.cls;t4.textContent=r4.has?soText(r4.so):'—';}
   var t5=$('#tm'+(N_SHIFTS+2));if(t5){var r5=state.drepTotals||{has:false,sales:0};t5.className='tm';t5.textContent=r5.has?usd(r5.sales||0):'—';}
+  var t6=$('#tm'+(N_SHIFTS+3));if(t6){var v6=vendorDayItems(state.date);t6.className='tm';t6.textContent=v6.has?usd(v6.total):'—';}
   /* current shift fields */
   if(state.tab<N_SHIFTS){
     var o=dc.cs[state.tab];
@@ -977,7 +1013,7 @@ function updateLive(){
   else if(state.tab===N_SHIFTS+2){var rd=state.drepTotals||{so:0,has:false,collected:0,sales:0};c2={so:rd.so,has:rd.has,collected:rd.collected,sales:rd.sales};}
   else c2=isDay?{so:dc.so,has:dc.has,collected:dc.collected,sales:dc.sales}:dc.cs[state.tab];
   var bi=soInfo(c2.so,c2.has);
-  $('#barTitle').textContent=state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1)));
+  $('#barTitle').textContent=state.tab===N_SHIFTS+3?'Vendors':(state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1))));
   $('#barSub').textContent='Collected '+usd(c2.collected)+'  ·  Sales '+usd(c2.sales);
   var bn=$('#barNum');bn.className='bn '+bi.cls;bn.textContent=c2.has?soText(c2.so):'—';
   var bp=$('#barPill');bp.className='pill '+bi.cls;bp.textContent=bi.word;
@@ -1007,7 +1043,7 @@ function renderDates(){
 }
 function renderAll(){
   renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else renderDailyReports();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else renderVendors();
   renderDates();updateLive();
   armed=false;var dd=$('#delDay');dd.textContent='Delete this day';dd.classList.remove('armed');
 }
@@ -1099,7 +1135,7 @@ main.addEventListener('click',function(e){
 $('#tabs').addEventListener('click',function(e){
   var b=e.target.closest('[data-tab]');if(!b)return;
   state.tab=Number(b.dataset.tab);renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else renderDailyReports();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else renderVendors();
   if(state.tab===N_SHIFTS+2)drepLoad(false);
   updateLive();
   window.scrollTo({top:0});
@@ -1192,6 +1228,7 @@ function refreshView(){
   if(state.tab===N_SHIFTS){renderDay();updateLive();return;}
   if(state.tab===N_SHIFTS+1){renderReports();updateLive();return;}
   if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();return;}
+  if(state.tab===N_SHIFTS+3){renderVendors();updateLive();return;}
   if(typing())updateLive();else{renderShift();updateLive();}
 }
 function startLocal(){
@@ -1242,6 +1279,7 @@ function boot(){
   var h=location.hash||'';
   if(h==='#reports')state.tab=N_SHIFTS+1;
   else if(h==='#daily-reports')state.tab=N_SHIFTS+2;
+  else if(h==='#vendors')state.tab=N_SHIFTS+3;
   renderAll();
   if(state.tab===N_SHIFTS+2)drepLoad(false);
   setStatus('','Loading…');
