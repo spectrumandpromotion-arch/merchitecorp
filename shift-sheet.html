@@ -103,6 +103,8 @@ main{padding-top:16px}
 .row.who{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 32px}
 .x{width:32px;height:32px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted);font-size:18px;line-height:1;padding:0}
 .x:hover{color:var(--short);border-color:var(--short)}
+.negt{flex:0 0 auto;width:30px;height:30px;margin-right:3px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);font-size:18px;line-height:1;padding:0}
+.negt.on{color:var(--short);border-color:var(--short);background:var(--short-soft)}
 .add{justify-self:start;padding:6px 10px;border:1px dashed var(--muted);border-radius:6px;background:none;color:var(--accent);font-weight:600;font-size:13px}
 .hdr{display:grid;gap:8px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:-2px}
 .hdr.drop{grid-template-columns:minmax(0,1.3fr) minmax(0,.8fr) minmax(0,1fr) 32px}
@@ -290,7 +292,7 @@ function fmtOut(v,f){
 }
 
 /* ---------- state ---------- */
-var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[]},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0}};
+var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[],vendEdit:false,vendDraft:[]},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0}};
 var mode='init',dbCol=null,dbSet=null;
 var dirty={},ver={},saving=false,saveTimer=null,armed=false,armTimer=null,resetArmed=false,resetTimer=null;
 function ensureDay(d){if(!state.days[d])state.days[d]=normDay(null);return state.days[d];}
@@ -422,7 +424,8 @@ function priceOf(s,k){return s.gas[k].pr!==''?s.gas[k].pr:state.settings.gas[k];
 function ln(label,key,t){return '<div class="ln'+(t?' t':'')+'"><span>'+label+'</span><b data-o="'+key+'"></b></div>';}
 function money(label,p,o){
   o=o||{};var id=pid(p);
-  return '<div class="f"><label for="'+id+'">'+label+'</label><div class="in"><i>$</i><input id="'+id+'" data-p="'+p+'" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+esc(getP(cur(),p))+'"'+(o.auto?' data-auto="'+o.auto+'"':'')+'></div></div>';
+  var neg=num(getP(cur(),p))<0;
+  return '<div class="f"><label for="'+id+'">'+label+'</label><div class="in"><i>$</i><input id="'+id+'" data-p="'+p+'" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+esc(getP(cur(),p))+'"'+(o.auto?' data-auto="'+o.auto+'"':'')+'><button type="button" class="negt'+(neg?' on':'')+'" data-neg="'+p+'" title="Make negative / positive" aria-label="Toggle minus">\u2212</button></div></div>';
 }
 function textIn(label,p,ph){
   var id=pid(p);
@@ -430,7 +433,8 @@ function textIn(label,p,ph){
 }
 function cell(p,ph,cls,mode_,aria){
   var id=pid(p);
-  return '<div class="in'+(cls?' '+cls:'')+'">'+(mode_==='$'?'<i>$</i>':'')+'<input id="'+id+'" data-p="'+p+'" '+(mode_==='$'?'inputmode="decimal"':'')+(aria?' aria-label="'+esc(aria)+'"':'')+' autocomplete="off" placeholder="'+esc(ph)+'" value="'+esc(getP(cur(),p))+'"></div>';
+  var neg=mode_==='$'&&num(getP(cur(),p))<0;
+  return '<div class="in'+(cls?' '+cls:'')+'">'+(mode_==='$'?'<i>$</i>':'')+'<input id="'+id+'" data-p="'+p+'" '+(mode_==='$'?'inputmode="decimal"':'')+(aria?' aria-label="'+esc(aria)+'"':'')+' autocomplete="off" placeholder="'+esc(ph)+'" value="'+esc(getP(cur(),p))+'">'+(mode_==='$'?'<button type="button" class="negt'+(neg?' on':'')+'" data-neg="'+p+'" title="Make negative / positive" aria-label="Toggle minus">\u2212</button>':'')+'</div>';
 }
 function delBtn(l,i,label){return '<button type="button" class="x" data-act="del" data-l="'+l+'" data-i="'+i+'" aria-label="Remove '+esc(label)+'">×</button>';}
 
@@ -475,7 +479,7 @@ function renderShift(){
     h+='<div class="coin f"><label for="'+pid('coins.'+c[0])+'">'+c[1]+'</label><div class="in"><input id="'+pid('coins.'+c[0])+'" data-p="coins.'+c[0]+'" inputmode="numeric" autocomplete="off" placeholder="0" value="'+esc(s.coins[c[0]])+'"></div><div class="sub" data-o="'+c[2]+'"></div></div>';
   });
   h+='</div></div>';
-  h+='<div class="tot"><span>Total cash</span><b data-o="cash"></b></div></div></section>';
+  h+='<div class="tot"><span>Total cash</span><b data-o="cash"></b></div><p class="note">Money fields take a minus: tap \u2212 next to an amount for no cash, a payout, no deposit, or a short. On Shift 3 a negative lottery Cash shows as Short.</p></div></section>';
 
   h+='<section class="card"><h2>Cards and other tender</h2><div class="stack"><div class="two keep">'+money('Credit','credit')+money('Debit','debit')+money('EBT','ebt')+money('Coupons','coupons')+'</div>'+
     money('Card fees <small>(optional)</small>','fees')+
@@ -505,7 +509,7 @@ function renderShift(){
 
   /* sales */
   h+='<section class="card"><h2>Sales</h2><div class="stack">'+
-    '<div class="f"><label for="'+pid('fuel')+'">Fuel sales'+(state.tab===LOTTERY_SHIFT?' <small>(blank = gas report total)</small>':'')+'</label><div class="in"><i>$</i><input id="'+pid('fuel')+'" data-p="fuel" data-auto="fuelAuto" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+esc(s.fuel)+'"></div></div>'+
+    '<div class="f"><label for="'+pid('fuel')+'">Fuel sales'+(state.tab===LOTTERY_SHIFT?' <small>(blank = gas report total)</small>':'')+'</label><div class="in"><i>$</i><input id="'+pid('fuel')+'" data-p="fuel" data-auto="fuelAuto" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+esc(s.fuel)+'"><button type="button" class="negt'+(num(s.fuel)<0?' on':'')+'" data-neg="fuel" title="Make negative / positive" aria-label="Toggle minus">\u2212</button></div></div>'+
     money('Merchandise sales','merch')+money('Sales tax','tax')+'</div></section>';
 
   /* gas: shift 3 only */
@@ -726,6 +730,39 @@ function repWeekView(d){
   h+='</div>';
   return {h:h,totals:{has:true,collected:tot.collected,sales:tot.sales,so:tot.so}};
 }
+function drepDayPayOuts(d){
+  if(!state.drepData)return null;
+  var tot=0,n=0,any=false;
+  for(var i=0;i<N_SHIFTS;i++){
+    var r=drepShiftRow(d,i);
+    if(r&&String(r[15]||'').trim()!==''){tot=r2(tot+num(r[15]));n++;any=true;}
+  }
+  return any?{total:tot,n:n}:null;
+}
+function vendorJournalHtml(d){
+  var vd=vendorDayItems(d);
+  var h='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>Vendor journal \u2014 '+fmtDayLong(d)+'</h2>';
+  if(!vd.has){
+    h+='<p class="note">No vendor payments this day.</p>';
+  }else{
+    var debitT=0,creditT=0;
+    h+='<div class="tbl"><table><thead><tr><th>Date</th><th>Vendor</th><th>Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr></thead><tbody>';
+    vd.items.forEach(function(x){
+      var a=r2(num(x.amt));debitT=r2(debitT+a);creditT=r2(creditT+a);
+      h+='<tr><td>'+fmtDay(d)+'</td><td>'+esc(x.desc)+'</td><td>'+esc(x.cat)+'</td><td style="text-align:right">'+usd(a)+'</td><td style="text-align:right">'+usd(a)+'</td></tr>';
+    });
+    h+='<tr class="key"><td colspan="3">Total</td><td style="text-align:right">'+usd(debitT)+'</td><td style="text-align:right">'+usd(creditT)+'</td></tr>';
+    h+='</tbody></table></div>';
+    var bal=Math.abs(debitT-creditT)<0.005;
+    h+='<p style="margin-top:12px"><span class="pill '+(bal?'ok':'short')+'">'+(bal?'Balanced':'Not balanced')+'</span></p>';
+    var dc=drepDayPayOuts(d);
+    if(dc){
+      h+='<p class="note">Closing report pay outs: '+usd(dc.total)+(dc.n<3?' ('+dc.n+' of 3 shifts so far)':'')+(Math.abs(dc.total-debitT)<0.005?' \u2014 matches the journal.':' \u2014 differs from the journal by '+usd(r2(dc.total-debitT))+'.')+'</p>';
+    }
+  }
+  h+='</div></div>';
+  return h;
+}
 function renderReports(){
   var R=state.rep;
   if(!R.date||!validDate(R.date))R.date=state.date;
@@ -748,6 +785,8 @@ function renderReports(){
   else res=repWeekView(d);
   h+=res.h+'</div>';
   state.repTotals=res.totals;
+  h+=vendorJournalHtml(d);
+  if(!state.drepData&&!state.drep.loading&&!state.drep._tried){state.drep._tried=true;drepLoad(false);}
   h+='<div class="grid" style="margin-top:16px"><section class="card wide"><h2>Manage</h2><div class="repctl"><div class="row2"><label class="datepick" style="flex:1"><span>Delete a date</span><input type="date" id="repDelDate" value=""></label><button type="button" class="btn danger" data-rep="del-date">'+(R.delArm?'Tap again to delete '+fmtDay(R.delArm):'Delete date…')+'</button></div><p class="note">Deletes the whole date from this website AND from the Google Sheets (Sync sheet + Daily Closing). Use it when a date was entered wrong. There is no undo.</p></div></section></div>';
   h+='<p class="note" style="margin-top:16px">Till counts (transactions, voids, no sales) come from the SuperSonic closing report, not this sheet.</p>';
   $('#main').innerHTML=h;
@@ -785,13 +824,14 @@ function drepLoad(force){
   if(D.loading)return;
   if(!force&&state.drepData){D.loaded=true;return;}
   D.loading=true;D.error='';
-  renderDailyReports();
+  if(state.tab===N_SHIFTS+2)renderDailyReports();
   drepFetch_(30000).then(function(j){
     D.loading=false;
     if(!j||!j.ok||!j.dailyClosing)throw new Error('bad response');
     state.drepData=j;D.loaded=true;D.error='';D.updated=j.generatedAt||new Date().toISOString();
     try{localStorage.setItem(DREP_LS,JSON.stringify({at:D.updated,data:j}));}catch(e){}
     if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();}
+    else if(state.tab===N_SHIFTS+1){renderReports();updateLive();}
   }).catch(function(){
     D.loading=false;
     var cached=null;
@@ -799,6 +839,7 @@ function drepLoad(force){
     if(cached&&cached.data){state.drepData=cached.data;D.loaded=true;D.updated=cached.at;D.error='Showing the saved copy from '+fmtUpTime(cached.at)+' — could not reach the sheets.';}
     else D.error='Could not load the daily reports — check connection and tap Refresh.';
     if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();}
+    else if(state.tab===N_SHIFTS+1){renderReports();updateLive();}
   });
 }
 function drepCard(title,rows){
@@ -954,6 +995,40 @@ function vendorDayItems(d){
   items.forEach(function(x){total=r2(total+num(x.amt));});
   return {items:items,total:total,has:items.length>0};
 }
+function allVendorNames(){
+  var seen={},names=[];
+  Object.keys(state.days).forEach(function(d){
+    state.days[d].shifts.forEach(function(s){
+      s.payouts.forEach(function(x){
+        if(!num(x.amt))return;
+        var w=(x.desc||'').trim();
+        if(!w||seen[w])return;
+        seen[w]=1;names.push(w);
+      });
+    });
+  });
+  return names.sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
+}
+function applyVendorRenames(){
+  var U=state.ui,changed={};
+  U.vendDraft.forEach(function(e){
+    var nw=String(e.cur||'').trim();
+    if(nw&&nw!==e.old)changed[e.old]=nw;
+  });
+  if(!Object.keys(changed).length)return 0;
+  var days=0;
+  Object.keys(state.days).forEach(function(d){
+    var hit=false;
+    state.days[d].shifts.forEach(function(s){
+      s.payouts.forEach(function(x){
+        var w=(x.desc||'').trim();
+        if(w&&changed[w]){x.desc=changed[w];hit=true;}
+      });
+    });
+    if(hit){markDirty(d);days++;}
+  });
+  return days;
+}
 function renderVendors(){
   var d=state.date;
   var vd=vendorDayItems(d);
@@ -972,6 +1047,22 @@ function renderVendors(){
     pe.forEach(function(p){var who=p.who==='Unspecified'?(p.cat||'Unspecified'):p.who;h+='<tr><td>'+esc(who)+'</td><td>'+esc(p.cat)+'</td><td style="text-align:right">'+p.n+'</td><td style="text-align:right">'+usd(p.total)+'</td></tr>';});
     h+='<tr class="key"><td>Week total</td><td></td><td></td><td style="text-align:right">'+usd(wtot)+'</td></tr>';
     h+='</tbody></table></div>';
+  }
+  h+='</div></div>';
+  var U=state.ui;
+  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><div class="cardhead"><h2>Rename a vendor</h2>'+(state.isOwner&&!U.vendEdit?'<button type="button" class="link" data-vend="edit">Edit names</button>':'')+'</div>';
+  if(U.vendEdit){
+    if(!U.vendDraft.length)h+='<p class="note">No vendor names entered yet \u2014 add a payout with a name (description) on any shift first.</p>';
+    else{
+      h+='<div class="rows">';
+      U.vendDraft.forEach(function(e,i){
+        h+='<div class="f"><label for="vn-'+i+'">'+esc(e.old)+'</label><div class="in txt"><input id="vn-'+i+'" data-vn="'+i+'" aria-label="Rename '+esc(e.old)+'" autocomplete="off" value="'+esc(e.cur)+'"></div></div>';
+      });
+      h+='</div><div class="btnrow" style="margin-top:12px"><button type="button" class="btn" data-vend="save">Save names</button><button type="button" class="btn" data-vend="cancel">Cancel</button></div>';
+    }
+    h+='<p class="note">Rename once and it changes everywhere \u2014 every day and every shift, past entries included. It saves on this device and goes to the sheets on the next Upload.</p>';
+  }else{
+    h+='<p class="note">Fix a vendor name once and it stays fixed everywhere \u2014 no re-entering it each day.</p>';
   }
   h+='</div></div>';
   h+='<p class="note" style="margin-top:16px">From the pay-outs entered on the Shift Sheet. Tap Upload to Sheets to send the same payments to the Google Sheets vendor list.</p>';
@@ -1065,6 +1156,7 @@ main.addEventListener('input',function(e){
   if(ds.gp){state.ui.gasDraft[ds.gp]=t.value;return;}
   if(ds.cp){state.ui.costDraft[ds.cp]=t.value;return;}
   if(ds.ty!==undefined){state.ui.typesDraft[Number(ds.ty)]=t.value;return;}
+  if(ds.vn!==undefined){var vd=state.ui.vendDraft[Number(ds.vn)];if(vd)vd.cur=t.value;return;}
   var p=ds.p;
   if(!p||state.tab>=N_SHIFTS)return;
   setP(cur(),p,t.value);
@@ -1075,6 +1167,12 @@ main.addEventListener('input',function(e){
   markDirty();updateLive();
 });
 main.addEventListener('click',function(e){
+  var ng=e.target.closest('[data-neg]');
+  if(ng&&state.tab<N_SHIFTS){
+    var s0=cur(),p0=ng.dataset.neg,v=String(getP(s0,p0)||'').trim();
+    setP(s0,p0,v.charAt(0)==='-'?v.slice(1):'-'+v);
+    markDirty();renderShift();updateLive();return;
+  }
   var b=e.target.closest('[data-act]');if(!b||state.tab>=N_SHIFTS)return;
   var a=b.dataset.act,S=state.settings,U=state.ui;
   if(a==='reset'){
@@ -1195,6 +1293,18 @@ main.addEventListener('click',function(e){
 main.addEventListener('change',function(e){
   var t=e.target;
   if(t.dataset&&t.dataset.drepDate!==undefined&&state.tab===N_SHIFTS+2&&validDate(t.value)){state.drep.date=t.value;renderDailyReports();updateLive();}
+});
+main.addEventListener('click',function(e){
+  var b=e.target.closest('[data-vend]');if(!b||state.tab!==N_SHIFTS+3)return;
+  var k=b.dataset.vend,U=state.ui;
+  if(k==='edit'){if(!state.isOwner)return;U.vendEdit=true;U.vendDraft=allVendorNames().map(function(n){return {old:n,cur:n};});renderVendors();updateLive();return;}
+  if(k==='cancel'){U.vendEdit=false;U.vendDraft=[];renderVendors();updateLive();return;}
+  if(k==='save'){
+    var n=applyVendorRenames();
+    U.vendEdit=false;U.vendDraft=[];
+    setStatus('ok',n?('Vendor name changed on '+n+' day'+(n>1?'s':'')+' \u2014 saved on this device; upload to send it to the sheets.'):'No names changed.');
+    renderVendors();updateLive();return;
+  }
 });
 $('#dates').addEventListener('click',function(e){var b=e.target.closest('[data-date]');if(b)openDate(b.dataset.date,false);});
 $('#datePick').addEventListener('change',function(e){if(e.target.value)openDate(e.target.value,true);});
