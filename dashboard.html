@@ -27,6 +27,14 @@
 #profit .in input{flex:1;min-width:0;border:0;outline:0;background:transparent;padding:9px 10px;font-size:15px;text-align:right}
 #profit .repday{background:none;border:0;color:var(--accent2);cursor:pointer;font:inherit;text-align:left;padding:0;text-decoration:underline}
 #profit .note{margin:10px 0 0}
+/* Receipt Reader, Demo — clearly a demo, beside the live system. */
+#receiptReaderDemo .demo-badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7c2d12;background:#ffedd5;border:1px solid #fdba74;border-radius:99px;padding:2px 9px;vertical-align:middle;margin-left:8px}
+#receiptReader .card{margin-bottom:16px}
+#receiptReader .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px}
+#receiptReader img.rr-photo{max-width:100%;max-height:320px;display:block;margin:12px 0;border:1px solid var(--line);border-radius:8px}
+#receiptReader pre{white-space:pre-wrap;word-break:break-word;background:#f4f6f8;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px;max-height:220px;overflow:auto}
+#receiptReader .rr-prog{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin:8px 0}
+#receiptReader .rr-prog i{display:block;height:100%;background:var(--accent2,#0b6b5d);width:0%}
 </style>
 </head>
 <body>
@@ -43,11 +51,16 @@
 <div class="card"><h3>Shifts &amp; Day</h3><p>Add or open a date, fill in each shift, and see the day total.</p><p><a class="btn" href="shift-sheet.html">Open Shift Sheet</a></p></div>
 <div class="card"><h3>Reports</h3><p>Shift, whole-day and week reports — from the website and from the closing-report sheets.</p><p><a class="btn" href="shift-sheet.html#reports">Reports</a> <a class="btn" href="shift-sheet.html#daily-reports">Daily Reports</a></p></div>
 <div class="card"><h3>Profit</h3><p>Buy and sell prices set once, then the quantity sold per shift from the Z-Report.</p><p><a class="btn" href="#profitSection">Open Profit</a></p></div>
+<div class="card"><h3>Receipt Reader, Demo</h3><p>Take a photo of a purchase receipt and get an editable purchase order. Demo, work in progress — reads on this device only.</p><p><a class="btn" href="#receiptReaderDemo">Open Receipt Reader, Demo</a></p></div>
 </div>
 </section>
 <section id="profitSection">
 <h2>Profit</h2>
 <div id="profit"><p class="muted">Loading profit…</p></div>
+</section>
+<section id="receiptReaderDemo">
+<h2>Receipt Reader, Demo <span class="demo-badge">Demo</span></h2>
+<div id="receiptReader"><p class="muted">Loading receipt reader…</p></div>
 </section>
 </main>
 <footer>© Merchitecorp — Spectrum and Promotion · <a href="mailto:spectrumandpromotion@gmail.com">spectrumandpromotion@gmail.com</a></footer>
@@ -388,6 +401,238 @@
   });
   feedLoad(false);
   renderProfit();
+})();
+</script>
+<script>
+/* Receipt Reader, Demo — demo model, beside the live system (not on it).
+   A receipt photo is read ON THIS DEVICE with Tesseract.js (free, no key,
+   the photo never leaves the device) and turned into an editable purchase
+   order the user checks and confirms. Nothing is sent to the sheets — a
+   confirmed purchase order is saved on this device only, as demo data.
+   GEMINI HOOK (not wired — see rrGeminiRead below): the server key lives in
+   the Apps Script project properties as GEMINI_API_KEY (never in this page).
+   Do not wire it until that key's generateContent access is verified. */
+(function(){
+  var sess=null; try{ sess=JSON.parse(sessionStorage.getItem('merchitecorp_session')||'null'); }catch(e){}
+  var box=document.getElementById('receiptReader');
+  if(!box) return;
+  if(!sess||!sess.email){ box.innerHTML='<p class="muted">Log in to use the receipt reader demo.</p>'; return; }
+  var RR_LS='gas-shift-sheet-receipt-demo-v1';
+  var TESS_CDN='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+  function num(v){var n=parseFloat(String(v==null?'':v).replace(/[$,\s]/g,''));return isFinite(n)?n:0;}
+  function r2(x){return Math.round((x+1e-9)*100)/100;}
+  function usd(x){var v=r2(x);var s=Math.abs(v).toLocaleString('en-US',{style:'currency',currency:'USD'});return v<0?'\u2212'+s:s;}
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function pad(n){return (n<10?'0':'')+n;}
+  function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+  var MONTHS={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+  var RR={vendor:'',date:todayStr(),items:[],raw:'',photo:'',status:'',progress:0,busy:false,receiptTotal:null,confirmed:false};
+  /* GEMINI HOOK — NOT WIRED. Do not enable until the key is verified.
+     The Gemini API key lives server-side in the Apps Script project
+     properties as GEMINI_API_KEY (never in this page, never in any file).
+     To wire it later: add an Apps Script action (e.g. action=readReceipt)
+     that accepts the photo, calls Gemini with the key, and returns
+     {vendor, date, items:[{name, qty, price}]} as JSON; then call that
+     action here instead of Tesseract. The Cloud Console key's
+     generateContent access is unverified, so this stays disabled. */
+  function rrGeminiRead(/* imageDataUrl */){ return Promise.resolve(null); }
+  var RR_SKIP=/^(receipt|invoice|total|subtotal|sub total|tax|change|balance|cash|card|credit|debit|payment|amount due|thank you|welcome|store|items?|qty|quantity|price|description)/i;
+  function rrFindDate(lines){
+    for(var i=0;i<lines.length;i++){
+      var l=lines[i],m;
+      m=l.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return m[1]+'-'+m[2]+'-'+m[3];
+      m=l.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/); if(m) return m[3]+'-'+pad(+m[1])+'-'+pad(+m[2]);
+      m=l.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2})\b/); if(m) return '20'+m[3]+'-'+pad(+m[1])+'-'+pad(+m[2]);
+      m=l.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i);
+      if(m) return m[3]+'-'+MONTHS[m[1].toLowerCase()]+'-'+pad(+m[2]);
+      m=l.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{4})\b/i);
+      if(m) return m[3]+'-'+MONTHS[m[2].toLowerCase()]+'-'+pad(+m[1]);
+    }
+    return '';
+  }
+  function rrFindVendor(lines){
+    for(var i=0;i<lines.length;i++){
+      var l=lines[i];
+      if(l.length<3||l.length>40) continue;
+      if(/[0-9$]/.test(l)) continue;
+      if(RR_SKIP.test(l)) continue;
+      if(!/[A-Za-z]{3}/.test(l)) continue;
+      return l;
+    }
+    return lines.length?lines[0]:'';
+  }
+  function rrParseText(text){
+    var lines=String(text||'').split(/\r?\n/).map(function(s){return s.replace(/\s+/g,' ').trim();}).filter(Boolean);
+    var out={vendor:rrFindVendor(lines),date:rrFindDate(lines),items:[],receiptTotal:null};
+    var skipLine=/total|subtotal|sub total|tax|change due|balance due|amount due|cash|card tender|credit|debit|payment|thank you/i;
+    lines.forEach(function(l){
+      if(skipLine.test(l)){
+        var tm=l.match(/total[^0-9]*([\d,]+\.\d{2})/i);
+        if(tm&&out.receiptTotal==null) out.receiptTotal=num(tm[1]);
+        return;
+      }
+      var m=l.match(/([\d,]+\.\d{2})\s*$/);
+      if(!m) return;
+      var amt=num(m[1]);
+      if(amt<=0) return;
+      var rest=l.slice(0,m.index).trim().replace(/[·•\-–—\s]+$/,'');
+      if(!rest) return;
+      var qty=1, name=rest;
+      var qm=rest.match(/^(\d{1,3})\s*[x×]\s*(.+)$/i);
+      if(qm){ qty=num(qm[1]); name=qm[2].trim(); }
+      else {
+        var qm2=rest.match(/^(\d{1,3})\s+(.+)$/);
+        if(qm2&&/[A-Za-z]/.test(qm2[2])&&qm2[2].length>1){ qty=num(qm2[1]); name=qm2[2].trim(); }
+      }
+      if(!name||name.length<2) return;
+      if(/^\d+$/.test(name)) return;
+      out.items.push({name:name,qty:qty>0?qty:1,price:r2(amt/(qty>0?qty:1))});
+    });
+    return out;
+  }
+  function rrSaved(){ try{ return JSON.parse(localStorage.getItem(RR_LS)||'[]'); }catch(e){ return []; } }
+  function rrSaveList(list){ try{ localStorage.setItem(RR_LS,JSON.stringify(list)); }catch(e){} }
+  function rrTotal(){ var t=0; RR.items.forEach(function(it){ t=r2(t+num(it.qty)*num(it.price)); }); return t; }
+  function rrRender(){
+    var h='<div class="card"><h2>Receipt Reader, Demo <span class="demo-badge">Demo</span></h2>';
+    h+='<p class="note">Demo — work in progress. Take a photo of a purchase receipt: it is read <b>on this device only</b> with Tesseract.js (free, no key, the photo never leaves the device) and shown below as an editable purchase order for you to check. Nothing is sent to the sheets.</p>';
+    h+='<div class="row2"><button type="button" class="btn" data-rr="camera">Take a photo</button><button type="button" class="btn" data-rr="file">Choose a photo</button><button type="button" class="btn" data-rr="sample">Use a sample receipt</button></div>';
+    h+='<input type="file" id="rr-cam" accept="image/*" capture="environment" style="position:absolute;left:-9999px" aria-hidden="true"><input type="file" id="rr-fil" accept="image/*" style="position:absolute;left:-9999px" aria-hidden="true">';
+    if(RR.busy){
+      h+='<p class="note">'+esc(RR.status)+'</p><div class="rr-prog"><i style="width:'+Math.round(RR.progress*100)+'%"></i></div>';
+    } else if(RR.status){
+      h+='<p class="note">'+esc(RR.status)+'</p>';
+    }
+    if(RR.photo) h+='<img class="rr-photo" alt="Receipt photo" src="'+RR.photo+'">';
+    if(RR.items.length){
+      h+='<div class="tbl"><table><thead><tr><th>Vendor</th><th>Date</th></tr></thead><tbody><tr><td><div class="in"><input data-rr-field="vendor" type="text" autocomplete="off" style="text-align:left" value="'+esc(RR.vendor)+'"></div></td><td><div class="in"><input data-rr-field="date" type="date" value="'+esc(RR.date)+'"></div></td></tr></tbody></table></div>';
+      h+='<div class="tbl"><table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit $</th><th style="text-align:right">Line $</th><th></th></tr></thead><tbody>';
+      RR.items.forEach(function(it,i){
+        h+='<tr><td><div class="in"><input data-rr-item="'+i+':name" type="text" autocomplete="off" style="text-align:left" value="'+esc(it.name)+'"></div></td><td style="text-align:right"><div class="in"><input data-rr-item="'+i+':qty" inputmode="decimal" autocomplete="off" value="'+it.qty+'"></div></td><td style="text-align:right"><div class="in"><i>$</i><input data-rr-item="'+i+':price" inputmode="decimal" autocomplete="off" value="'+it.price+'"></div></td><td style="text-align:right">'+usd(r2(num(it.qty)*num(it.price)))+'</td><td><button type="button" class="btn" data-rr-del="'+i+'" aria-label="Remove row">✕</button></td></tr>';
+      });
+      h+='<tr class="key"><td>Purchase order total</td><td></td><td></td><td style="text-align:right">'+usd(rrTotal())+'</td><td></td></tr>';
+      h+='</tbody></table></div>';
+      if(RR.receiptTotal!=null) h+='<p class="note">Receipt total read from the photo: '+usd(RR.receiptTotal)+' · Purchase order total: '+usd(rrTotal())+(Math.abs(RR.receiptTotal-rrTotal())<0.01?' — matches.':' — differs; check the rows above.')+'</p>';
+      h+='<div class="row2" style="margin-top:12px"><button type="button" class="btn" data-rr="add">Add a row</button><button type="button" class="btn" data-rr="confirm">Confirm purchase order</button><button type="button" class="btn" data-rr="clear">Clear</button></div>';
+      if(RR.confirmed) h+='<p class="note">Confirmed and saved on this device (demo) — not sent to the sheets.</p>';
+    }
+    if(RR.raw) h+='<details style="margin-top:12px"><summary>Raw text read from the photo</summary><pre>'+esc(RR.raw)+'</pre></details>';
+    var saved=rrSaved();
+    if(saved.length){
+      h+='<h2 style="margin-top:16px">Saved purchase orders — this device only (demo)</h2><div class="tbl"><table><thead><tr><th>Vendor</th><th>Date</th><th style="text-align:right">Items</th><th style="text-align:right">Total</th><th></th></tr></thead><tbody>';
+      saved.forEach(function(p,i){ h+='<tr><td>'+esc(p.vendor||'—')+'</td><td>'+esc(p.date||'—')+'</td><td style="text-align:right">'+p.items.length+'</td><td style="text-align:right">'+usd(p.total)+'</td><td><button type="button" class="btn" data-rr-unsave="'+i+'" aria-label="Delete saved order">✕</button></td></tr>'; });
+      h+='</tbody></table></div>';
+    }
+    h+='<p class="note">Server read (Gemini) is not connected yet — the hook is in the code, waiting until the key is verified. Until then this demo reads on-device only.</p>';
+    h+='</div>';
+    box.innerHTML=h;
+  }
+  function rrLoadTess(){
+    if(window.Tesseract) return Promise.resolve();
+    return new Promise(function(res,rej){
+      var s=document.createElement('script');
+      s.src=TESS_CDN; s.onload=function(){res();}; s.onerror=function(){rej(new Error('tesseract load failed'));};
+      document.head.appendChild(s);
+    });
+  }
+  function rrDownscale(dataUrl){
+    return new Promise(function(res){
+      var img=new Image();
+      img.onload=function(){
+        var w=img.naturalWidth,h=img.naturalHeight,max=1800;
+        if(w>max){ h=Math.round(h*max/w); w=max; }
+        var c=document.createElement('canvas'); c.width=w; c.height=h;
+        var ctx=c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+        res(c.toDataURL('image/jpeg',0.85));
+      };
+      img.onerror=function(){ res(dataUrl); };
+      img.src=dataUrl;
+    });
+  }
+  function rrReadPhoto(dataUrl){
+    RR.busy=true; RR.progress=0; RR.status='Reading the photo on this device…'; RR.confirmed=false;
+    rrRender();
+    rrDownscale(dataUrl).then(function(small){
+      RR.photo=small;
+      return rrLoadTess().then(function(){
+        RR.status='Loading the reader (first use only)…'; rrRender();
+        return window.Tesseract.recognize(small,'eng',{logger:function(m){
+          if(m.status==='recognizing text'){ RR.progress=num(m.progress)||0; RR.status='Reading the receipt… '+Math.round(RR.progress*100)+'%'; rrRender(); }
+          else if(m.status){ RR.status='Reading the receipt… '+m.status; }
+        }});
+      });
+    }).then(function(result){
+      var text=(result&&result.data&&result.data.text)||'';
+      RR.raw=text;
+      var parsed=rrParseText(text);
+      RR.vendor=parsed.vendor; RR.date=parsed.date||todayStr(); RR.items=parsed.items; RR.receiptTotal=parsed.receiptTotal;
+      RR.busy=false; RR.progress=0;
+      RR.status=parsed.items.length?('Read '+parsed.items.length+' item'+(parsed.items.length>1?'s':'')+' from the photo — check the rows below and edit anything wrong.'):'Could not read any items from this photo — try a clearer, straight photo with good light, or use the sample receipt.';
+      rrRender();
+    }).catch(function(){
+      RR.busy=false; RR.progress=0;
+      RR.status='The on-device reader could not be loaded — check connection and try again. The photo never left this device.';
+      rrRender();
+    });
+  }
+  function rrHandleFile(file){
+    if(!file) return;
+    var rd=new FileReader();
+    rd.onload=function(){ rrReadPhoto(String(rd.result)); };
+    rd.readAsDataURL(file);
+  }
+  function rrSample(){
+    RR.vendor='Sample Vendor — ACME Wholesale';
+    RR.date=todayStr();
+    RR.items=[
+      {name:'Beer 24-pack',qty:2,price:18.50},
+      {name:'Cigarettes (carton)',qty:10,price:52.00},
+      {name:'Snacks & Chips',qty:12,price:9.25},
+      {name:'Energy Drinks 12-pack',qty:4,price:14.75}
+    ];
+    RR.receiptTotal=r2(2*18.50+10*52+12*9.25+4*14.75);
+    RR.raw=''; RR.photo=''; RR.confirmed=false;
+    RR.status='Sample data — not a real scan. Edit anything, then Confirm to save it on this device (demo).';
+    rrRender();
+  }
+  box.addEventListener('click',function(e){
+    var b=e.target.closest('[data-rr]');
+    if(b){
+      var k=b.dataset.rr;
+      if(k==='camera'){ var c=document.getElementById('rr-cam'); if(c) c.click(); return; }
+      if(k==='file'){ var f=document.getElementById('rr-fil'); if(f) f.click(); return; }
+      if(k==='sample'){ rrSample(); return; }
+      if(k==='add'){ RR.items.push({name:'',qty:1,price:0}); RR.confirmed=false; rrRender(); return; }
+      if(k==='clear'){ RR.vendor=''; RR.date=todayStr(); RR.items=[]; RR.raw=''; RR.photo=''; RR.receiptTotal=null; RR.status=''; RR.confirmed=false; rrRender(); return; }
+      if(k==='confirm'){
+        var list=rrSaved();
+        list.unshift({vendor:RR.vendor,date:RR.date,items:RR.items.map(function(it){return {name:it.name,qty:num(it.qty),price:num(it.price)};}),total:rrTotal(),savedAt:new Date().toISOString()});
+        rrSaveList(list); RR.confirmed=true; RR.status='Purchase order confirmed and saved on this device (demo) — not sent to the sheets.'; rrRender(); return;
+      }
+      return;
+    }
+    var del=e.target.closest('[data-rr-del]');
+    if(del){ RR.items.splice(Number(del.dataset.rrDel),1); RR.confirmed=false; rrRender(); return; }
+    var uns=e.target.closest('[data-rr-unsave]');
+    if(uns){ var l=rrSaved(); l.splice(Number(uns.dataset.rrUnsave),1); rrSaveList(l); rrRender(); return; }
+  });
+  box.addEventListener('change',function(e){
+    var t=e.target;
+    if(t.id==='rr-cam'||t.id==='rr-fil'){ if(t.files&&t.files[0]) rrHandleFile(t.files[0]); t.value=''; return; }
+    if(t.dataset&&t.dataset.rrField!==undefined){
+      if(t.dataset.rrField==='vendor') RR.vendor=t.value;
+      if(t.dataset.rrField==='date') RR.date=t.value;
+      RR.confirmed=false; return;
+    }
+    if(t.dataset&&t.dataset.rrItem!==undefined){
+      var parts=t.dataset.rrItem.split(':'); var it=RR.items[Number(parts[0])]; if(!it) return;
+      if(parts[1]==='name') it.name=t.value;
+      if(parts[1]==='qty') it.qty=num(t.value);
+      if(parts[1]==='price') it.price=r2(num(t.value));
+      RR.confirmed=false; rrRender(); return;
+    }
+  });
+  rrRender();
 })();
 </script>
 </body>
