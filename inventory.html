@@ -8,6 +8,11 @@
 <style>
 /* Inventory Count — separate dashboard. Stock on hand only; no profit data here. */
 
+/* Full screen: this page is NOT the narrow 960px column from style.css.
+   The dashboard stretches edge to edge. */
+main{max-width:none;width:100%}
+header .nav{max-width:none}
+
 /* --- Inventory Count: separate dashboard. Futuristic compact cards. ---
    Market colours, translucent glassy cards with a soft glow:
    low stock = warm red/amber, healthy stock = cool green/teal,
