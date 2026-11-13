@@ -57,6 +57,15 @@
 #invDash .inv-note{font-size:12px;color:#94a3b8;margin:10px 0 0}
 #invDash .inv-feed{font-size:13px;color:#fde68a;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);border-radius:10px;padding:10px 12px;margin:10px 0}
 #invDash .inv-feed.ok{color:#a7f3d0;background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.4)}
+#invDash .inv-sku-toggle{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:14px 16px;color:#fff;font:inherit;cursor:pointer;margin:14px 0 0;backdrop-filter:blur(2px)}
+#invDash .inv-sku-toggle:hover{background:rgba(255,255,255,.10)}
+#invDash .inv-sku-toggle .t{font-weight:800;font-size:15px}
+#invDash .inv-sku-toggle .c{margin-left:auto;font-size:12px;color:#94a3b8;white-space:nowrap}
+#invDash .inv-sku-toggle .chev{font-size:16px;color:#5eead4;transition:transform .2s ease}
+#invDash .inv-sku-toggle.closed .chev{transform:rotate(-90deg)}
+#invDash .inv-sku-body.closed{display:none}
+#invDash .inv-tablewrap{max-height:62vh;overflow-y:auto}
+#invDash .inv-tablewrap thead th{position:sticky;top:0;background:#fff;z-index:1}
 @media (max-width:640px){#invDash .inv-hero .inv-big{font-size:24px}}
 
 /* --- Ask AI: floating Ask GENIE button, bottom-right; panel sits above it --- */
@@ -112,6 +121,8 @@
 </div>
 <p class="inv-note" id="invHistNote"></p>
 <div class="inv-card" id="invLowCard"><h3>Low stock + order list</h3><div id="invLowList"><p class="inv-line">Loading&hellip;</p></div></div>
+<button class="inv-sku-toggle" id="invSkuToggle" type="button" aria-expanded="true" aria-controls="invSkuBody"><span class="t">All SKUs &mdash; what sold &amp; what is in stock</span><span class="c" id="invSkuCount"></span><span class="chev" id="invSkuChev">&#9662;</span></button>
+<div class="inv-sku-body" id="invSkuBody">
 <div class="inv-controls">
 <div><label for="invSearch">Search product or SKU</label><input type="search" id="invSearch" placeholder="e.g. Corona six pack or 80660956152" autocomplete="off"></div>
 <div><label for="invDept">Department</label><select id="invDept"><option value="ALL">All departments</option></select></div>
@@ -123,6 +134,7 @@
 <tbody id="invTableBody"><tr><td colspan="10">Loading stock&hellip;</td></tr></tbody>
 </table></div>
 <p class="inv-note" id="invShowing"></p>
+</div>
 </section>
 </main>
 <div id="askAiPanel" class="ask-ai-panel" hidden aria-hidden="true">
@@ -164,7 +176,9 @@
    in a separate future build. NO profit data is read or shown anywhere here.
    LOW is pace-based: Remaining covers fewer than the set number of days at the
    product's own recent daily sales rate (Sold last month / 31 days). A product
-   with no opening count shows "not counted yet", never a LOW warning. */
+   with no opening count shows "not counted yet", never a LOW warning.
+   Until the feed is live, the SKU list below comes from sku-list.json (what the
+   store sold in the last month, in-store sales); the feed replaces it once v11 is deployed. */
 (function(){
   var SYNC_URL='https://script.google.com/macros/s/AKfycbxjongQ5prQyIv9lP4kv-55cpiWcQhxikBVcuCpWC2s7ij7GTHDmn0Q_cohPZQtqy5_Cg/exec';
   var LS_KEY='uptown-inventory-v1';
@@ -183,6 +197,27 @@
      Opening Count, Received, Sold last month, Remaining] (header + rows).
      Days of cover = Remaining / (Sold last month / 31 days). Blank when there
      is no sales history — a product with no pace cannot be judged low. */
+  /* SKU list fallback: sku-list.json — all SKUs the store sells, in-store
+     sales Oct 13 – Nov 12, 2026: [sku, name, department, sell price, qty sold
+     last month]. Used until the live stock feed (v11) is connected — the feed
+     then replaces it. Current stock is never invented: without an opening
+     count every row shows "not counted yet". */
+  function productsFromRows(list){
+    return (list||[]).map(function(r){
+      var sold=num(r[4]);
+      return {sku:String(r[0]),name:String(r[1]),dept:String(r[2]),sell:num(r[3]),opening:null,received:0,sold:sold,remaining:null,counted:false,cover:null};
+    });
+  }
+  function useSnapshot(){
+    return fetch('sku-list.json').then(function(r){ return r.json(); }).then(function(list){
+      if(list && list.length){ state.products=productsFromRows(list); fillDepts(); }
+    }).catch(function(){});
+  }
+  function fillDepts(){
+    var depts=[]; state.products.forEach(function(p){ if(p.dept && depts.indexOf(p.dept)<0) depts.push(p.dept); });
+    depts.sort();
+    document.getElementById('invDept').innerHTML='<option value="ALL">All departments</option>'+depts.map(function(x){ return '<option value="'+esc(x)+'">'+esc(x)+'</option>'; }).join('');
+  }
   function parseStock(rows){
     if(!rows || rows.length<2) return [];
     var out=[];
@@ -261,7 +296,7 @@
       el.textContent='Connected — stock counts from the Stock Accounts sheet'+(state.generatedAt?(' (feed updated '+state.generatedAt+')'):'')+'. Counts are as of the last closing.';
     } else {
       el.className='inv-feed';
-      el.textContent='Stock feed not connected yet — counts will appear here once Apps Script v11 is deployed. The sales highlights below are from '+HIST_LABEL+'.';
+      el.textContent='Stock feed not connected yet — the SKU list below is what the store sells (in-store sales, '+HIST_LABEL.replace('Sales history ','')+'); current stock shows "not counted yet" until Apps Script v11 is deployed and the opening count is set.';
     }
   }
   function render(){
@@ -307,6 +342,7 @@
       }).join('');
     }
     document.getElementById('invShowing').textContent='Showing '+rows.length+' of '+state.products.length+' products — lowest stock first.';
+    var skuCount=document.getElementById('invSkuCount'); if(skuCount) skuCount.textContent=state.products.length?state.products.length+' SKUs':'';
   }
   function insightLine(p,h){ return 'Sold '+qty(h.m)+' in the last month ('+HIST_LABEL.replace('Sales history ','')+').'; }
   function renderInsights(){
@@ -371,16 +407,22 @@
       var v=parseFloat(this.value);
       state.lowDays=isFinite(v)&&v>=0?v:LOW_DAYS_DEFAULT; this.value=state.lowDays; saveLowDays(); render();
     });
+    var skuToggle=document.getElementById('invSkuToggle'), skuBody=document.getElementById('invSkuBody');
+    if(skuToggle && skuBody){ skuToggle.addEventListener('click',function(){
+      var closed=skuBody.classList.toggle('closed');
+      skuToggle.classList.toggle('closed',closed);
+      skuToggle.setAttribute('aria-expanded',closed?'false':'true');
+    }); }
     fetch(SYNC_URL+'?action=stock').then(function(r){ return r.json(); }).then(function(d){
       if(d && d.ok && d.stock && d.stock.length>1){
         state.products=parseStock(d.stock);
         state.feedOk=true; state.generatedAt=d.generatedAt||null;
-        var depts=[]; state.products.forEach(function(p){ if(p.dept && depts.indexOf(p.dept)<0) depts.push(p.dept); });
-        depts.sort();
-        deptSel.innerHTML='<option value="ALL">All departments</option>'+depts.map(function(x){ return '<option value="'+esc(x)+'">'+esc(x)+'</option>'; }).join('');
+        fillDepts();
+        render();
+      } else {
+        useSnapshot().then(function(){ render(); });
       }
-      render();
-    }).catch(function(){ render(); });
+    }).catch(function(){ useSnapshot().then(function(){ render(); }); });
   }
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',load); } else { load(); }
   window.__invTest={parseStock:parseStock,sortRows:sortRows,matches:matches,isLow:isLow,changePct:changePct,recommended:recommended,computeInsights:computeInsights,histMap:histMap,coverTxt:coverTxt};
