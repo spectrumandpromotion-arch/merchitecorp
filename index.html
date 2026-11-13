@@ -6,6 +6,33 @@
 <title>Merchitecorp — Spectrum and Promotion</title>
 <meta name="description" content="Merchitecorp (Spectrum and Promotion): promotion and merchandising. Open on any phone, on any network.">
 <link rel="stylesheet" href="style.css">
+<style>
+/* --- Ask AI: floating Ask GENIE button, bottom-right; panel sits above it --- */
+/* --- Ask GENIE: floating circular button, bottom-right --- */
+.ask-genie-fab{position:fixed;right:14px;bottom:14px;width:80px;height:80px;border-radius:50%;border:0;cursor:pointer;z-index:70;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:linear-gradient(135deg,#14b8a6,#0b6b5d);color:#fff;box-shadow:0 8px 22px rgba(11,107,93,.45),0 2px 6px rgba(15,23,42,.25);font:inherit;padding:0}
+.ask-genie-fab:hover{filter:brightness(1.08)}
+.ask-genie-fab:active{transform:scale(.96)}
+.ask-genie-star{font-size:15px;line-height:1}
+.ask-genie-label{font-size:11px;font-weight:800;line-height:1.2;text-align:center;white-space:nowrap}
+.ask-ai-panel{position:fixed;right:12px;bottom:102px;width:min(390px,calc(100vw - 24px));max-height:82vh;overflow-y:auto;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(15,23,42,.28);z-index:60;padding:16px}
+.ask-ai-panel[hidden]{display:none}
+.ask-ai-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.ask-ai-head h2{margin:0;font-size:18px;flex:1}
+.ask-ai-tag{font-size:11px;font-weight:700;color:#0b6b5d;background:#d1fae5;border-radius:99px;padding:2px 8px;white-space:nowrap}
+.ask-ai-close{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:14px;line-height:1}
+.ask-ai-toggle{display:flex;align-items:center;gap:10px;background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0;font-weight:700;cursor:pointer}
+.ask-ai-toggle input{width:20px;height:20px;accent-color:var(--accent2)}
+.ask-ai-offnote{margin:8px 0}
+.ask-ai-body label{display:block;font-weight:600;margin:10px 0 4px}
+.ask-ai-body input[type="date"]{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:16px}
+.ask-ai-qs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.ask-ai-qs button{border:1px solid #bae6fd;background:#f0f9ff;color:#0c4a6e;border-radius:10px;padding:9px 8px;font-size:13px;font-weight:600;cursor:pointer;text-align:left;line-height:1.3}
+.ask-ai-qs button:hover{background:#e0f2fe}
+.ask-ai-askrow{display:flex;gap:8px;margin:10px 0}
+.ask-ai-askrow input{flex:1;min-width:0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px}
+.ask-ai-answer{white-space:pre-wrap;background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:14px;line-height:1.6;margin:10px 0}
+.ask-ai-src{font-size:12px;color:var(--muted);margin:6px 0 0}
+</style>
 </head>
 <body>
 <header><div class="nav">
@@ -33,5 +60,351 @@
 </section>
 </main>
 <footer>© Merchitecorp — Spectrum and Promotion</footer>
+<div id="askAiPanel" class="ask-ai-panel" hidden aria-hidden="true">
+<div class="ask-ai-head"><h2>Ask AI</h2><span class="ask-ai-tag">System data only &middot; No AI key</span><button class="ask-ai-close" id="askAiClose" type="button" aria-label="Close Ask AI">&#10005;</button></div>
+<p class="muted" style="margin:0">Answers come from your closing-report sheets only. Nothing is sent to any AI service.</p>
+<label class="ask-ai-toggle"><input type="checkbox" id="askAiToggle"> Ask AI on</label>
+<p class="note ask-ai-offnote" id="askAiOffNote">Ask AI is off. Switch it on to ask questions.</p>
+<div class="ask-ai-body" id="askAiBody" hidden>
+<label for="askAiDate">Date</label>
+<input type="date" id="askAiDate">
+<div class="ask-ai-qs" id="askAiQs"></div>
+<div class="ask-ai-askrow"><input id="askAiInput" type="text" autocomplete="off" placeholder="Ask about the system data&hellip;"><button class="btn" id="askAiSend" type="button">Ask</button></div>
+<div class="ask-ai-answer" id="askAiAnswer" hidden></div>
+<p class="ask-ai-src" id="askAiSrc"></p>
+</div>
+</div>
+</main>
+<button class="ask-genie-fab" id="askAiBtn" type="button" aria-controls="askAiPanel" aria-label="Ask GENIE"><span class="ask-genie-star" aria-hidden="true">&#10022;</span><span class="ask-genie-label">Ask GENIE</span></button>
+<script>
+/* Ask AI — NO AI KEY, NO AI SERVICE. Rule-based answers only, computed in
+   this browser from the closing-report sheets via the same reports feed the
+   profit tool uses (?action=reports). If a number is not in the feed, the
+   answer says so — it never invents a number. Profit = qty x (sell - buy)
+   using the buy/sell prices saved on this device; categories with no buy
+   price set cannot have profit calculated, and the answer says that. */
+(function(){
+  var sess=null; try{ sess=JSON.parse(sessionStorage.getItem('merchitecorp_session')||'null'); }catch(e){}
+  var btn=document.getElementById('askAiBtn'), panel=document.getElementById('askAiPanel');
+  if(!btn||!panel) return;
+  if(!sess||!sess.email){ btn.style.display='none'; return; }
+  var SYNC_URL='https://script.google.com/macros/s/AKfycbxjongQ5prQyIv9lP4kv-55cpiWcQhxikBVcuCpWC2s7ij7GTHDmn0Q_cohPZQtqy5_Cg/exec';
+  var DREP_LS='gas-shift-sheet-daily-reports-v1';
+  var LS_SET='gas-shift-sheet-settings-v1';
+  var CATS=['Beer','Cigarettes','Juice','Snacks & Chips','Tobacco','Water','Misc. No Tax','Energy Drinks','Wine','Soda','Smokeless Tobacco / Chew','Dairy Product','Candy','Gen Grocery','Phone Cards','TX Groc','Frozen Pro','Coffee','Cigars'];
+  var CATKEYS=['beer','cigarettes','juice','snack','tobacco','water','misc','energy','wine','soda','smokeless','dairy','candy','grocery','phonecard','txgroc','frozen','coffee','cigars'];
+  var SHIFT_LABELS=['1st Shift','2nd Shift','3rd Shift'];
+  function num(v){var n=parseFloat(String(v==null?'':v).replace(/[$,\s]/g,''));return isFinite(n)?n:0;}
+  function r2(x){return Math.round((x+1e-9)*100)/100;}
+  function usd(x){var v=r2(x);var s=Math.abs(v).toLocaleString('en-US',{style:'currency',currency:'USD'});return v<0?'\u2212'+s:s;}
+  function pad(n){return (n<10?'0':'')+n;}
+  function toDate(s){var p=String(s||'').split('-');return new Date(+p[0],(+p[1]||1)-1,+p[2]||1);}
+  function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+  function validDate(s){return /^\d{4}-\d{2}-\d{2}$/.test(s)&&!isNaN(toDate(s).getTime());}
+  function addDaysStr(d,n){var dt=toDate(d);dt.setDate(dt.getDate()+n);return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());}
+  function weekStartStr(d){var dt=toDate(d);var dow=(dt.getDay()+6)%7;dt.setDate(dt.getDate()-dow);return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());}
+  function fmtDay(d){return toDate(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+  function fmtUpTime(iso){try{return new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}catch(e){return '';}}
+  function normDate(s){
+    var t=String(s||'').trim();
+    var m=t.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m)return m[1]+'-'+m[2]+'-'+m[3];
+    m=t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m)return m[3]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2);
+    return '';
+  }
+  function readPrices(){try{var o=JSON.parse(localStorage.getItem(LS_SET)||'null');return (o&&o.profit&&typeof o.profit==='object')?o.profit:{};}catch(e){return {};}}
+  function priceByKey(key){
+    var p=readPrices()[key]||{}, buy=num(p.buy), sell=0;
+    if(p.sellPct!=null){var pct=num(p.sellPct); if(pct>0&&pct<100&&buy>0)sell=r2(buy/(1-pct/100));}
+    else sell=num(p.sell);
+    return {buy:buy,sell:sell};
+  }
+  function priceByName(name){ var i=CATS.indexOf(name); return i>=0?priceByKey(CATKEYS[i]):{buy:0,sell:0}; }
+  var feed=null, feedUpdated='', feedNote='', feedLoading=false, feedWaiters=[];
+  function feedLoad(cb){
+    if(feed){ if(cb)cb(true); return; }
+    if(cb)feedWaiters.push(cb);
+    if(feedLoading) return;
+    feedLoading=true;
+    fetch(SYNC_URL+'?action=reports').then(function(r){return r.json();}).then(function(j){
+      feedLoading=false;
+      if(!j||!j.ok||!j.dailyClosing)throw new Error('bad');
+      feed=j; feedUpdated=j.generatedAt||''; feedNote='Feed updated '+fmtUpTime(feedUpdated)+'.';
+      try{localStorage.setItem(DREP_LS,JSON.stringify({at:feedUpdated,data:j}));}catch(e){}
+      var w=feedWaiters; feedWaiters=[]; w.forEach(function(f){f(true);});
+    }).catch(function(){
+      feedLoading=false;
+      var cached=null; try{cached=JSON.parse(localStorage.getItem(DREP_LS)||'null');}catch(e){}
+      if(cached&&cached.data){feed=cached.data; feedUpdated=cached.at||''; feedNote='Showing the saved copy from '+fmtUpTime(cached.at)+' — could not reach the sheets.';}
+      else feedNote='Could not load the sheets — check connection and try again.';
+      var w=feedWaiters; feedWaiters=[]; w.forEach(function(f){f(!!feed);});
+    });
+  }
+  function dailyRows(){
+    if(!feed||!feed.dailyClosing) return [];
+    return feed.dailyClosing.slice(1).filter(function(r){
+      if(!r) return false;
+      var d0=String(r[0]||'');
+      if(!d0||d0==='Date') return false;
+      if(d0.indexOf('CUSTOM')===0) return false;
+      if(String(r[1]||'').indexOf('Custom Period')>=0) return false;
+      return normDate(r[0])!=='';
+    });
+  }
+  function rowsForDate(d){ return dailyRows().filter(function(r){return normDate(r[0])===d;}); }
+  function rowsForWeek(d){
+    var ws=weekStartStr(d), we=addDaysStr(ws,6);
+    return dailyRows().filter(function(r){var rd=normDate(r[0]); return rd>=ws&&rd<=we;});
+  }
+  function sumIdx(rows,i){var t=0; rows.forEach(function(r){t=r2(t+num(r[i]));}); return t;}
+  function deptRows(){
+    if(!feed||!feed.departmentSales) return [];
+    return feed.departmentSales.slice(1).filter(function(r){
+      if(!r) return false;
+      var sh=Number(r[1]); if(!(sh>=1&&sh<=3)) return false;
+      return normDate(r[0])!=='';
+    });
+  }
+  function deptForDate(d){ return deptRows().filter(function(r){return normDate(r[0])===d;}); }
+  function deptDates(){ var seen={}, out=[]; deptRows().forEach(function(r){var d=normDate(r[0]); if(!seen[d]){seen[d]=1; out.push(d);}}); return out.sort(); }
+  function profitForRows(drows){
+    var tot={qty:0,sales:0,profit:0,priced:0,unpriced:[],lines:[]};
+    if(!drows.length) return null;
+    drows.forEach(function(r){
+      var sh=Number(r[1]);
+      CATS.forEach(function(name,ci){
+        var q=num(r[2+ci]); if(q<=0) return;
+        var pr=priceByKey(CATKEYS[ci]);
+        tot.qty=r2(tot.qty+q);
+        if(pr.buy>0&&pr.sell>0){
+          tot.sales=r2(tot.sales+q*pr.sell);
+          tot.profit=r2(tot.profit+q*(pr.sell-pr.buy));
+          tot.priced++;
+        } else if(tot.unpriced.indexOf(name)<0){ tot.unpriced.push(name); }
+        tot.lines.push({shift:sh,name:name,qty:q,sell:pr.sell,buy:pr.buy});
+      });
+    });
+    return tot;
+  }
+  function profitForDate(d){ return profitForRows(deptForDate(d)); }
+  function profitForWeek(d){
+    var ws=weekStartStr(d), we=addDaysStr(ws,6);
+    var rows=deptRows().filter(function(r){var rd=normDate(r[0]); return rd>=ws&&rd<=we;});
+    return profitForRows(rows);
+  }
+  function profitText(t, label){
+    if(!t) return null;
+    var out=label+'\nProfit (priced categories only): '+usd(t.profit)+'\nSales (priced categories only): '+usd(t.sales)+'\nItems sold: '+t.qty;
+    if(t.unpriced.length) out+='\nProfit could NOT be calculated for: '+t.unpriced.join(', ')+' — no buy price set yet. Set the buy/sell prices on the Profit panel and ask again.';
+    else out+='\nAll sold categories had prices set.';
+    return out;
+  }
+  function shiftLines(rows, idx, label){
+    var parts=[];
+    rows.forEach(function(r){
+      var sh=String(r[1]||'');
+      var name=SHIFT_LABELS.filter(function(l){return sh.indexOf(l)===0;})[0]||sh;
+      parts.push(name+': '+label(num(r[idx])));
+    });
+    return parts.join('\n');
+  }
+  function answer(key, d, extra){
+    var rows=rowsForDate(d), ws=weekStartStr(d), we=addDaysStr(ws,6);
+    var wrows=rowsForWeek(d);
+    var head='';
+    function src(){ return '\n\nSource: closing-report sheets (reports feed). '+feedNote+' Date asked: '+fmtDay(d)+'.'; }
+    if(key==='profit-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      var t=profitForDate(d);
+      if(!t) return 'Department quantities are not in the system for '+fmtDay(d)+' yet. Department sales are only in the feed for: '+deptDates().join(', ')+'. Profit cannot be calculated without them.'+src();
+      return (profitText(t,'Profit on '+fmtDay(d))||'')+src();
+    }
+    if(key==='profit-week'){
+      if(!wrows.length) return 'No closed shifts in the system for the week of '+fmtDay(ws)+' to '+fmtDay(we)+' yet.'+src();
+      var tw=profitForWeek(d);
+      if(!tw) return 'Department quantities are not in the system for the week of '+fmtDay(ws)+' to '+fmtDay(we)+' yet. Department sales are only in the feed for: '+deptDates().join(', ')+'.'+src();
+      return (profitText(tw,'Profit for the week '+fmtDay(ws)+' to '+fmtDay(we))||'')+src();
+    }
+    if(key==='sales-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      return 'Total sales on '+fmtDay(d)+': '+usd(sumIdx(rows,4))+'\nNet sales: '+usd(sumIdx(rows,5))+'\nTransactions: '+sumIdx(rows,6)+'\nInside sales: '+usd(sumIdx(rows,10))+'\nGas sales: '+usd(sumIdx(rows,9))+' ('+sumIdx(rows,8)+' gal)\nTax collected: '+usd(sumIdx(rows,11))+'\n'+shiftLines(rows,4,usd)+src();
+    }
+    if(key==='sales-week'){
+      if(!wrows.length) return 'No closed shifts in the system for the week of '+fmtDay(ws)+' to '+fmtDay(we)+' yet.'+src();
+      return 'Total sales for the week '+fmtDay(ws)+' to '+fmtDay(we)+': '+usd(sumIdx(wrows,4))+'\nNet sales: '+usd(sumIdx(wrows,5))+'\nTransactions: '+sumIdx(wrows,6)+'\nInside sales: '+usd(sumIdx(wrows,10))+'\nGas sales: '+usd(sumIdx(wrows,9))+' ('+sumIdx(wrows,8)+' gal)'+src();
+    }
+    if(key==='dept-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      var dr=deptForDate(d);
+      if(!dr.length) return 'Department quantities are not in the system for '+fmtDay(d)+' yet. Department sales are only in the feed for: '+deptDates().join(', ')+'.'+src();
+      var lines=['Sales by department on '+fmtDay(d)+':'];
+      var totQ=0, totS=0;
+      CATS.forEach(function(name,ci){
+        var q=0, s=0, hasSell=false;
+        dr.forEach(function(r){var x=num(r[2+ci]); q=r2(q+x); var pr=priceByName(name); if(pr.sell>0){s=r2(s+x*pr.sell); hasSell=true;}});
+        if(q>0){ totQ=r2(totQ+q); totS=r2(totS+s); lines.push(name+': '+q+' sold'+(hasSell?' — '+usd(s):' — sell price not set, sales unknown')); }
+      });
+      lines.push('Total items: '+totQ+(totS>0?' · Sales (priced categories): '+usd(totS):''));
+      return lines.join('\n')+src();
+    }
+    if(key==='cash-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      var synced=rows.filter(function(r){return String(r[33]||'')!=='';}).length;
+      if(!synced) return 'No shift-sheet data was uploaded for '+fmtDay(d)+' yet, so cash collected is not in the system for this date.'+src();
+      return 'Cash collected on '+fmtDay(d)+' (synced shifts: '+synced+' of '+rows.length+'):\nCash counted: '+usd(sumIdx(rows,22))+'\nCards: '+usd(sumIdx(rows,26))+' (Credit '+usd(sumIdx(rows,24))+' + Debit '+usd(sumIdx(rows,25))+')\nEBT: '+usd(sumIdx(rows,27))+'\nCollected: '+usd(sumIdx(rows,30))+'\nSafe drops: '+usd(sumIdx(rows,23))+'\n'+shiftLines(rows,30,usd)+src();
+    }
+    if(key==='safe-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      var synced2=rows.filter(function(r){return String(r[33]||'')!=='';}).length;
+      if(!synced2) return 'No shift-sheet data was uploaded for '+fmtDay(d)+' yet, so the cash in the safe is not in the system for this date.'+src();
+      return 'Cash in the safe for '+fmtDay(d)+': '+usd(sumIdx(rows,23))+' (safe drops total, synced shifts: '+synced2+' of '+rows.length+')\nCash counted: '+usd(sumIdx(rows,22))+'\nExpected deposit to safe: '+usd(sumIdx(rows,32))+src();
+    }
+    if(key==='fuel-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      var gp=sumIdx(rows,37);
+      var out='Fuel profit on '+fmtDay(d)+': '+usd(gp)+'\n87: '+usd(sumIdx(rows,34))+' · 89: '+usd(sumIdx(rows,35))+' · 93: '+usd(sumIdx(rows,36));
+      if(gp===0) out+='\nGas profit is $0.00 in the feed for this date — it was not entered on the website for these shifts.';
+      out+='\nGas sold: '+sumIdx(rows,8)+' gal for '+usd(sumIdx(rows,9))+src();
+      return out;
+    }
+    if(key==='payouts-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      return 'Pay outs on '+fmtDay(d)+': '+usd(sumIdx(rows,15))+'\n'+shiftLines(rows,15,usd)+'\nPer-person payee names are not in the reports feed, so I cannot break this down by person from here — the breakdown is on the Monthly sheet, Pay Outs by Payee tab.'+src();
+    }
+    if(key==='vendors-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      return 'Vendors paid on '+fmtDay(d)+': pay outs total '+usd(sumIdx(rows,15))+'. Vendor names are not in the reports feed, so I cannot list the vendors from here. See the Vendors tab on the shift sheet, or the Monthly sheet, Pay Outs by Payee tab.'+src();
+    }
+    if(key==='payee'){
+      var name=(extra&&extra.name)||'';
+      var dd=(extra&&extra.date)||d;
+      var rr=rowsForDate(dd);
+      if(!rr.length) return 'No closed shifts in the system for '+fmtDay(dd)+' yet.'+src();
+      return 'Pay outs to '+(name||'that person')+' on '+fmtDay(dd)+' cannot be answered from the reports feed — per-person payee names are not in it. Total pay outs that day were '+usd(sumIdx(rr,15))+'. The per-person breakdown is on the Monthly sheet, Pay Outs by Payee tab.'+src();
+    }
+    if(key==='short-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      var so=sumIdx(rows,31);
+      var state=so===0?'Balanced':(so<0?'Short '+usd(so):'Over '+usd(so));
+      return 'Cash on '+fmtDay(d)+': '+state+'\nShort / Over total: '+usd(so)+'\n'+shiftLines(rows,31,usd)+src();
+    }
+    if(key==='txns-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      return 'Transactions on '+fmtDay(d)+': '+sumIdx(rows,6)+'\nAverage ticket: '+usd(sumIdx(rows,4)/Math.max(1,sumIdx(rows,6)))+'\nVoids: '+sumIdx(rows,12)+'\nNo Sales: '+sumIdx(rows,13)+src();
+    }
+    if(key==='gas-day'){
+      if(!rows.length) return 'No closed shifts in the system for '+fmtDay(d)+' yet.'+src();
+      return 'Gas sold on '+fmtDay(d)+': '+sumIdx(rows,8)+' gallons for '+usd(sumIdx(rows,9))+src();
+    }
+    if(key==='cash-week'){
+      if(!wrows.length) return 'No closed shifts in the system for the week of '+fmtDay(ws)+' to '+fmtDay(we)+' yet.'+src();
+      var syn=wrows.filter(function(r){return String(r[33]||'')!=='';}).length;
+      return 'Cash collected for the week '+fmtDay(ws)+' to '+fmtDay(we)+' (synced shifts: '+syn+' of '+wrows.length+'):\nCash counted: '+usd(sumIdx(wrows,22))+'\nCards: '+usd(sumIdx(wrows,26))+'\nEBT: '+usd(sumIdx(wrows,27))+'\nCollected: '+usd(sumIdx(wrows,30))+'\nSafe drops: '+usd(sumIdx(wrows,23))+'\nShort / Over: '+usd(sumIdx(wrows,31))+src();
+    }
+    return 'I can only answer from the system data — profit, sales, department sales, cash, fuel profit, vendors and pay outs. Pick one of the prebuilt questions above.';
+  }
+  var QS=[
+    ['profit-day','What was my profit on this date?'],
+    ['profit-week','What was my profit this week?'],
+    ['sales-day','What were total sales on this date?'],
+    ['sales-week','What were total sales this week?'],
+    ['dept-day','Sales by department on this date'],
+    ['cash-day','How much cash was collected?'],
+    ['safe-day','How much cash is in the safe?'],
+    ['fuel-day','What was my fuel profit?'],
+    ['payouts-day','How much did I pay out?'],
+    ['vendors-day','Which vendors were paid?'],
+    ['payee','Pay out to a person — type it below'],
+    ['short-day','Was cash short or over?'],
+    ['txns-day','How many transactions?'],
+    ['gas-day','How much gas did I sell?'],
+    ['cash-week','Cash collected this week']
+  ];
+  var toggle=document.getElementById('askAiToggle');
+  var offNote=document.getElementById('askAiOffNote');
+  var body=document.getElementById('askAiBody');
+  var dateIn=document.getElementById('askAiDate');
+  var qsBox=document.getElementById('askAiQs');
+  var input=document.getElementById('askAiInput');
+  var sendBtn=document.getElementById('askAiSend');
+  var ansBox=document.getElementById('askAiAnswer');
+  var srcEl=document.getElementById('askAiSrc');
+  dateIn.value=todayStr();
+  QS.forEach(function(q){
+    var b=document.createElement('button');
+    b.type='button'; b.textContent=q[1]; b.setAttribute('data-ask',q[0]);
+    b.addEventListener('click',function(){
+      if(q[0]==='payee'){ input.value='How much did I pay '; input.focus(); showAnswer('Type the person and the date, for example: How much did I pay PAINT on 2026-11-11?'); return; }
+      ask(q[0], dateIn.value||todayStr(), null);
+    });
+    qsBox.appendChild(b);
+  });
+  function showAnswer(text){
+    ansBox.hidden=false; ansBox.textContent=text;
+    srcEl.textContent=feedNote;
+  }
+  function getDate(){
+    var v=dateIn.value||todayStr();
+    return validDate(v)?v:todayStr();
+  }
+  function ask(key, d, extra){
+    if(!toggle.checked){ showAnswer('Ask AI is off. Switch it on first.'); return; }
+    showAnswer('Loading the system data…');
+    feedLoad(function(ok){
+      if(!ok){ showAnswer('Could not load the sheets — check connection and try again.'); return; }
+      showAnswer(answer(key, d, extra));
+    });
+  }
+  function parseFree(text){
+    var t=String(text||'').toLowerCase();
+    var d=getDate();
+    var dm=t.match(/(\d{4}-\d{2}-\d{2})/);
+    if(dm&&validDate(dm[1])) d=dm[1];
+    else if(t.indexOf('yesterday')>=0) d=addDaysStr(getDate(),-1);
+    else if(t.indexOf('last week')>=0) d=addDaysStr(getDate(),-7);
+    var m2=text.match(/pay(?:out| out)?\s+(?:to\s+|for\s+)?([A-Za-z][A-Za-z &\.\-]{1,40}?)(?:\s+on\s+|$)/i);
+    if(m2){
+      var nm=m2[1].trim();
+      if(/^[A-Za-z][A-Za-z &\.\-]{1,40}$/.test(nm)&&nm.toLowerCase()!=='on'&&nm.toLowerCase()!=='out')
+        return {key:'payee', date:d, extra:{name:nm.toUpperCase(), date:d}};
+    }
+    if(t.indexOf('profit')>=0) return {key:t.indexOf('week')>=0?'profit-week':'profit-day', date:d};
+    if(t.indexOf('department')>=0) return {key:'dept-day', date:d};
+    if(t.indexOf('fuel profit')>=0||t.indexOf('gas profit')>=0) return {key:'fuel-day', date:d};
+    if(t.indexOf('gas')>=0&&(t.indexOf('gallon')>=0||t.indexOf('sell')>=0||t.indexOf('sold')>=0)) return {key:'gas-day', date:d};
+    if(t.indexOf('safe')>=0) return {key:'safe-day', date:d};
+    if(t.indexOf('cash')>=0) return {key:t.indexOf('week')>=0?'cash-week':'cash-day', date:d};
+    if(t.indexOf('short')>=0||t.indexOf('over')>=0) return {key:'short-day', date:d};
+    if(t.indexOf('transaction')>=0) return {key:'txns-day', date:d};
+    if(t.indexOf('vendor')>=0) return {key:'vendors-day', date:d};
+    if(t.indexOf('pay out')>=0||t.indexOf('payout')>=0||t.indexOf('pay')>=0) return {key:'payouts-day', date:d};
+    if(t.indexOf('sale')>=0) return {key:t.indexOf('week')>=0?'sales-week':'sales-day', date:d};
+    return {key:null, date:d};
+  }
+  function askFree(){
+    var text=input.value.trim();
+    if(!text){ showAnswer('Type a question, or tap one of the prebuilt questions above.'); return; }
+    var p=parseFree(text);
+    if(!p.key){ showAnswer('I can only answer from the system data — profit, sales, department sales, cash, fuel profit, vendors and pay outs. Pick one of the prebuilt questions above.'); return; }
+    ask(p.key, p.date, p.extra||null);
+  }
+  sendBtn.addEventListener('click', askFree);
+  input.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); askFree(); } });
+  toggle.addEventListener('change', function(){
+    var on=toggle.checked;
+    offNote.hidden=on; body.hidden=!on;
+    if(on){ showAnswer('Ask AI is on. Pick a date and tap a question — answers come from your sheets.'); feedLoad(function(){}); }
+    else { ansBox.hidden=true; srcEl.textContent=''; }
+  });
+  btn.addEventListener('click', function(){
+    var open=panel.hidden;
+    panel.hidden=!open; panel.setAttribute('aria-hidden', open?'false':'true');
+    if(open) panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+  document.getElementById('askAiClose').addEventListener('click', function(){
+    panel.hidden=true; panel.setAttribute('aria-hidden','true');
+  });
+})();
+</script>
+
 </body>
 </html>
