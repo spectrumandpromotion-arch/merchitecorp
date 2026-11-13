@@ -41,7 +41,7 @@ body{
   padding-right:max(16px,env(safe-area-inset-right,0px));
 }
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
-.wrap{max-width:1120px;margin:0 auto}
+.wrap{max-width:none;width:100%;margin:0 auto}
 button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -164,7 +164,7 @@ td.short{color:var(--short)}td.over{color:var(--over)}td.ok{color:var(--ok)}
 td.dayc{font-weight:700;background:var(--accent-soft)}
 .bar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);
   padding:10px max(16px,env(safe-area-inset-left,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));}
-.bar-in{max-width:1120px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.bar-in{max-width:none;width:100%;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:12px}
 .bt{font-weight:700;display:block}
 .bs{font:500 12px var(--mono);color:var(--muted)}
 .bn{font:600 20px var(--mono);margin-right:10px}
