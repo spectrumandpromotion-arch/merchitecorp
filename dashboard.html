@@ -256,6 +256,47 @@
     }
     return null;
   }
+  function profSheetAmt(d,idx){
+    var rows=(feed&&feed.departmentAmounts)||[];
+    if(!rows||rows.length<2)return null;
+    var want=drepNormDate(d);
+    for(var i=1;i<rows.length;i++){
+      var r=rows[i];
+      if(!r)continue;
+      var sh=Number(r[1]);
+      if(sh!==idx+1)continue;
+      var raw=String(r[0]==null?'':r[0]).trim();
+      var rd=drepNormDate(raw);
+      var ok=(rd===want||raw===want);
+      if(!ok){
+        var mu=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if(mu){var us=mu[3]+'-'+('0'+mu[1]).slice(-2)+'-'+('0'+mu[2]).slice(-2);if(us===want)ok=true;}
+      }
+      if(!ok)continue;
+      var out={};
+      PROF_CATS.forEach(function(c,ci){out[c[0]]=num(r[2+ci]);});
+      return out;
+    }
+    return null;
+  }
+  // Realised sell price for one shift: Z-Report amount / qty for that
+  // category (from the Department Amounts feed), falling back to the manual
+  // sell price when there is no amounts row for this date+shift, or when
+  // the user overrode the quantity by hand (the amount belongs to the
+  // sheet quantity, not the edited one). Sales then equal the Z-Report
+  // amount exactly; profit = sales - qty x buy (buy stays manual).
+  function profShiftRows(d,idx,m){
+    var qty=profShiftQty(d,idx,m),sheetQ=profSheetQty(d,idx),amt=profSheetAmt(d,idx),manual=((m||profRead())[d]||{})[idx]||{},rows=[];
+    PROF_CATS.forEach(function(c){
+      var q=num(qty[c[0]]),pr=profPrice(c[0]),sell=pr.sell,auto=false,sales=0;
+      var mq=num(manual[c[0]]);
+      if(amt&&q>0&&!(mq>0&&mq!==num(sheetQ[c[0]]))){
+        sell=amt[c[0]]/q;auto=true;sales=r2(amt[c[0]]);
+      }else sales=r2(q*sell);
+      rows.push({cat:c[0],name:c[1],qty:q,buy:pr.buy,sell:sell,sales:sales,profit:r2(sales-q*pr.buy),auto:auto});
+    });
+    return rows;
+  }
   function profShiftQty(d,idx,m){
     var manual=((m||profRead())[d]||{})[idx]||{};
     var sheet=profSheetQty(d,idx);
@@ -270,13 +311,12 @@
   }
   function profSetQty(d,idx,cat,v){var m=profRead();if(!m[d])m[d]={};if(!m[d][idx])m[d][idx]={};if(v>0)m[d][idx][cat]=r2(v);else delete m[d][idx][cat];profWrite(m);}
   function profShiftCalc(d,idx,m){
-    var qty=profShiftQty(d,idx,m),tot={qty:0,sales:0,profit:0,has:false};
-    PROF_CATS.forEach(function(c){
-      var q=num(qty[c[0]]),pr=profPrice(c[0]);
-      if(q>0)tot.has=true;
-      tot.qty=r2(tot.qty+q);
-      tot.sales=r2(tot.sales+q*pr.sell);
-      tot.profit=r2(tot.profit+q*(pr.sell-pr.buy));
+    var rows=profShiftRows(d,idx,m),tot={qty:0,sales:0,profit:0,has:false};
+    rows.forEach(function(r){
+      if(r.qty>0)tot.has=true;
+      tot.qty=r2(tot.qty+r.qty);
+      tot.sales=r2(tot.sales+r.sales);
+      tot.profit=r2(tot.profit+r.profit);
     });
     return tot;
   }
@@ -343,7 +383,7 @@
         h+='<tr><td>'+c[1]+'</td><td style="text-align:right">'+(pr.buy>0?usd(pr.buy):'—')+'</td><td style="text-align:right">'+(pr.sellPct!=null?(pr.sellPct.toFixed(1)+'%'+(pr.sell>0?' ('+usd(pr.sell)+')':'')):(pr.sell>0?usd(pr.sell):'—'))+'</td><td style="text-align:right">'+(hasP?usd(r2(pr.sell-pr.buy)):'—')+'</td><td style="text-align:right">'+(hasP?(100*profMargin(c[0])).toFixed(1)+'%':'—')+'</td><td>'+(pr.updated||'—')+'</td></tr>';
       });
       h+='</tbody></table></div>';
-      h+='<p class="note">Prices are saved on this device only. Change them when a price changes — about once a month. Until then the same prices apply to every shift, day and week.</p>';
+      h+='<p class="note">Buy prices are saved on this device only — set them once from your purchase orders. Sell prices now fill themselves in from the Z-Report (amount \u00f7 qty) for each shift when the sheets have that shift; the sell price you set here is the fallback when they do not.</p>';
       h+='<div style="margin-top:12px"><button type="button" class="btn" data-prof="prices-edit">Edit prices</button></div>';
     }else{
       h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $ / %</th></tr></thead><tbody>';
@@ -359,19 +399,19 @@
     return h;
   }
   function profShiftView(d,idx){
-    var m=profRead(),qty=profShiftQty(d,idx,m),tot=profShiftCalc(d,idx,m),inside=profInside(d,idx);
-    var sheetQ=profSheetQty(d,idx);
+    var m=profRead(),rows=profShiftRows(d,idx,m),tot=profShiftCalc(d,idx,m),inside=profInside(d,idx);
+    var sheetQ=profSheetQty(d,idx),sheetA=profSheetAmt(d,idx);
     var h='<div class="card"><h2>'+DREP_SHIFT_LABELS[idx]+' — '+fmtDayLong(d)+'</h2>';
     h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Qty sold</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $</th><th style="text-align:right">Sales $</th><th style="text-align:right">Profit $</th></tr></thead><tbody>';
-    PROF_CATS.forEach(function(c){
-      var q=num(qty[c[0]]),pr=profPrice(c[0]),sales=r2(q*pr.sell),pf=r2(q*(pr.sell-pr.buy));
-      h+='<tr><td>'+c[1]+'</td><td style="text-align:right"><div class="in"><input data-prof-qty="'+c[0]+'" inputmode="decimal" autocomplete="off" placeholder="0" value="'+(q>0?String(q):'')+'"></div></td><td style="text-align:right">'+(pr.buy>0?usd(pr.buy):'—')+'</td><td style="text-align:right">'+(pr.sell>0?usd(pr.sell):'—')+'</td><td style="text-align:right">'+usd(sales)+'</td><td style="text-align:right">'+usd(pf)+'</td></tr>';
+    rows.forEach(function(r){
+      h+='<tr><td>'+r.name+'</td><td style="text-align:right"><div class="in"><input data-prof-qty="'+r.cat+'" inputmode="decimal" autocomplete="off" placeholder="0" value="'+(r.qty>0?String(r.qty):'')+'"></div></td><td style="text-align:right">'+(r.buy>0?usd(r.buy):'—')+'</td><td style="text-align:right">'+(r.sell>0?usd(r2(r.sell)):'—')+(r.auto?' <span class="muted" title="Auto: Z-Report amount \u00f7 qty for this shift">auto</span>':'')+'</td><td style="text-align:right">'+usd(r.sales)+'</td><td style="text-align:right">'+usd(r.profit)+'</td></tr>';
     });
     h+='<tr class="key"><td>Total</td><td style="text-align:right">'+tot.qty+'</td><td></td><td></td><td style="text-align:right">'+usd(tot.sales)+'</td><td style="text-align:right">'+usd(tot.profit)+'</td></tr>';
     h+='</tbody></table></div>';
     if(inside==null)h+='<p class="note">Inside sales total not loaded yet — tap Refresh above to load it from the sheets, then this line shows how much of the shift is accounted for.</p>';
     else h+='<p class="note">Inside sales (Z-Report) '+usd(inside)+' · Categories entered '+usd(tot.sales)+' · Unaccounted '+usd(r2(inside-tot.sales))+'.</p>';
-    if(sheetQ)h+='<p class="note">Quantities auto-filled from the sheets (Z-Report Sales by Department). Edit any number to override it — your edit is saved on this device.</p></div>';
+    if(sheetQ&&sheetA)h+='<p class="note">Quantities and sell prices auto-filled from the sheets (Z-Report Sales by Department: sell = amount \u00f7 qty for this shift, marked \u201cauto\u201d). Edit any number to override it — your edit is saved on this device. Buy prices are still set by you, once.</p></div>';
+    else if(sheetQ)h+='<p class="note">Quantities auto-filled from the sheets (Z-Report Sales by Department). Edit any number to override it — your edit is saved on this device.</p></div>';
     else h+='<p class="note">Enter the quantity sold for each category from this shift Z-Report (Sales by Department). Profit is quantity x (sell - buy), just like fuel profit is gallons x (price - cost). Saved on this device only — test feature, nothing is sent to the sheets.</p></div>';
     return {h:h,totals:{has:tot.has,profit:tot.profit,sales:tot.sales}};
   }
@@ -380,8 +420,8 @@
     h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Qty</th><th style="text-align:right">Sales $</th><th style="text-align:right">Profit $</th></tr></thead><tbody>';
     var dayTot={qty:0,sales:0,profit:0,has:false},ins=[];
     PROF_CATS.forEach(function(c){
-      var q=0,sa=0,pf=0,pr=profPrice(c[0]);
-      for(var i=0;i<N_SHIFTS;i++){var x=num(profShiftQty(d,i,m)[c[0]]);q=r2(q+x);sa=r2(sa+x*pr.sell);pf=r2(pf+x*(pr.sell-pr.buy));}
+      var q=0,sa=0,pf=0;
+      for(var i=0;i<N_SHIFTS;i++){var rr=profShiftRows(d,i,m);rr.forEach(function(r){if(r.cat===c[0]){q=r2(q+r.qty);sa=r2(sa+r.sales);pf=r2(pf+r.profit);}});}
       h+='<tr><td>'+c[1]+'</td><td style="text-align:right">'+q+'</td><td style="text-align:right">'+usd(sa)+'</td><td style="text-align:right">'+usd(pf)+'</td></tr>';
     });
     h+='</tbody></table></div></div>';
@@ -415,8 +455,8 @@
     h+='</tbody></table></div>';
     h+='<div class="tbl" style="margin-top:16px"><table><thead><tr><th>Category</th><th style="text-align:right">Qty</th><th style="text-align:right">Week sales</th><th style="text-align:right">Week profit</th></tr></thead><tbody>';
     PROF_CATS.forEach(function(c){
-      var wq=0,wsa=0,wp=0,pr=profPrice(c[0]);
-      for(var j=0;j<7;j++){var dd=addDaysStr(ws,j);for(var i=0;i<N_SHIFTS;i++){var s=num(profShiftQty(dd,i,m)[c[0]]);wq=r2(wq+s);wsa=r2(wsa+s*pr.sell);wp=r2(wp+s*(pr.sell-pr.buy));}}
+      var wq=0,wsa=0,wp=0;
+      for(var j=0;j<7;j++){var dd=addDaysStr(ws,j);for(var i=0;i<N_SHIFTS;i++){var rr=profShiftRows(dd,i,m);rr.forEach(function(r){if(r.cat===c[0]){wq=r2(wq+r.qty);wsa=r2(wsa+r.sales);wp=r2(wp+r.profit);}});}}
       h+='<tr><td>'+c[1]+'</td><td style="text-align:right">'+wq+'</td><td style="text-align:right">'+usd(wsa)+'</td><td style="text-align:right">'+usd(wp)+'</td></tr>';
     });
     h+='</tbody></table></div></div>';
@@ -446,7 +486,7 @@
     h+=res.h;
     profTotals={has:res.totals.has,profit:res.totals.profit,sales:res.totals.sales};
     h+=profPricesCard();
-    h+='<p class="note">Test feature: quantities come from the Z-Report (Sales by Department), like gallons on Shift 3. The sheets are only used for the inside-sales total above. Fuel profit is on Shift 3 / Reports — this section covers the scanned goods.</p>';
+    h+='<p class="note">Test feature: quantities and sell prices come from the Z-Report (Sales by Department) — sell = amount \u00f7 qty for each shift, marked \u201cauto\u201d. Buy prices are set by you, once. The sheets are only used for the inside-sales total above. Fuel profit is on Shift 3 / Reports — this section covers the scanned goods.</p>';
     document.getElementById('profit').innerHTML=h;
   }
   var box=document.getElementById('profit');
