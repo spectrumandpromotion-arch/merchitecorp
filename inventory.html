@@ -188,7 +188,7 @@ header .nav{max-width:none}
 <div><label for="invDept">Department</label><select id="invDept"><option value="ALL">All departments</option></select></div>
 <div><label for="invThreshold">Low when cover is below (days)</label><input type="number" id="invThreshold" min="0" step="1" value="3"></div>
 </div>
-<p class="inv-note">Low means Remaining covers fewer than the days above, at the product&rsquo;s own sales pace (sold last month &divide; 31 days). A fast seller flags low sooner than a slow one. Saved on this device. The table is sorted lowest first — the low items sit at the top.</p>
+<p class="inv-note">Low means Remaining covers fewer than the days above, at the product&rsquo;s own monthly average pace (sold last month &divide; 31 days). Fast sellers (1+ a day) go to the top of the order list; slow movers sit quietly at the bottom with no alarm. Saved on this device. The table is sorted fast sellers first, lowest stock first.</p>
 <div class="inv-tablewrap"><table>
 <thead><tr><th>Product</th><th>SKU</th><th>Department</th><th class="num">Sell</th><th class="num">Opening</th><th class="num">Received</th><th class="num">Purchased</th><th class="num">Outstanding</th><th class="num">Sold (last month)</th><th class="num">Avg / day</th><th class="num">Remaining</th><th class="num">Days of cover</th><th>Status</th></tr></thead>
 <tbody id="invTableBody"><tr><td colspan="13">Loading stock&hellip;</td></tr></tbody>
@@ -300,6 +300,19 @@ header .nav{max-width:none}
   /* Monthly average pace: average sold per day over the month (sold / 31).
      LOW is judged by this average, never by a fixed count. */
   function avgDay(p){ if(p.sold===null||p.sold===undefined) return '\u2014'; return (p.sold/31).toFixed(1); }
+  /* Fast seller = sells 1+ a day on average over the month (31+ sold).
+     Fast sellers are the order priority: higher count on hand, bought
+     2-3 times a week. Slow sellers (< 1 a day) are never urgent — they
+     can sit at zero without an alarm. */
+  function isFast(p){ return p.sold!==null && p.sold!==undefined && p.sold>=31; }
+  /* Recommended order qty: one week at last week's sales rate (history
+     l7 when known, else one week at the monthly average pace). */
+  function recommendedQty(p,hm){
+    var h=hm?hm[p.sku]:null;
+    if(h && h.l7>0) return Math.ceil(h.l7);
+    if(p.sold!==null && p.sold!==undefined && p.sold>0) return Math.ceil(p.sold/31*7);
+    return null;
+  }
   function parseStock(rows){
     if(!rows || rows.length<2) return [];
     var out=[];
@@ -320,11 +333,15 @@ header .nav{max-width:none}
   }
   /* LOW when Remaining covers fewer than lowDays at the product's own pace. */
   function isLow(p,lowDays){ return p.counted && p.cover!==null && p.cover<lowDays; }
-  /* Lowest first: LOW items on top (least cover first), then counted items by
+  /* Pace-aware order: fast-seller LOW items first (least cover first),
+     then slow-seller LOW items (quiet, no alarm), then counted items by
      Remaining ascending, then products with no count set yet, by name. */
   function sortRows(list,lowDays){
     return list.slice().sort(function(a,b){
       var al=isLow(a,lowDays), bl=isLow(b,lowDays);
+      var af=al&&isFast(a), bf=bl&&isFast(b);
+      if(af && !bf) return -1;
+      if(!af && bf) return 1;
       if(al && !bl) return -1;
       if(!al && bl) return 1;
       if(al && bl && a.cover!==b.cover) return a.cover-b.cover;
@@ -413,8 +430,9 @@ header .nav{max-width:none}
     document.getElementById('invCounted').textContent=counted.length;
     document.getElementById('invLow').textContent=low.length;
     document.getElementById('invNotCounted').textContent=notCounted.length;
+    var fastLow=low.filter(function(p){ return isFast(p); });
     var lowStat=document.getElementById('invLowStat');
-    lowStat.className='inv-stat'+(low.length?' low':' ok');
+    lowStat.className='inv-stat'+(fastLow.length?' low':(low.length?' nc':' ok'));
     document.getElementById('invCountedStat').className='inv-stat'+(counted.length?' ok':' nc');
     document.getElementById('invNotCountedStat').className='inv-stat'+(notCounted.length?' nc':' ok');
     renderInsights();
@@ -429,10 +447,25 @@ header .nav{max-width:none}
       lowCard.className='inv-card ok';
       lowBox.innerHTML='<p class="inv-line">Nothing is low right now — every counted product covers at least '+th+' days at its own sales pace. '+(notCounted.length?notCounted.length+' product(s) still have no count set yet.':'')+'</p>';
     } else {
-      lowCard.className='inv-card low';
-      lowBox.innerHTML=sortRows(low,th).map(function(p){
-        return '<p class="inv-line"><span class="low-badge">LOW</span> <b>'+esc(p.name)+'</b> — '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover at its usual pace. We need to order this.</p>';
-      }).join('');
+      var hm=histMap();
+      var fast=sortRows(low.filter(function(p){ return isFast(p); }),th);
+      var slow=sortRows(low.filter(function(p){ return !isFast(p); }),th);
+      lowCard.className='inv-card '+(fast.length?'low':'nc');
+      var html='';
+      if(fast.length){
+        html+='<p class="inv-line"><b>Order now \u2014 fast sellers first.</b> These sell 1+ a day on average; buy 2\u20133 times a week to stay ahead.</p>';
+        html+=fast.map(function(p){
+          var rec=recommendedQty(p,hm);
+          return '<p class="inv-line"><span class="low-badge">\u25b2 LOW \u2014 order now</span> <b>'+esc(p.name)+'</b> \u2014 '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover at its usual pace ('+avgDay(p)+' a day).'+(rec!==null?' Order <b>'+qty(rec)+'</b> \u2014 one week at last week\u2019s pace.':'')+' Check again in ~2\u20133 days.</p>';
+        }).join('');
+      }
+      if(slow.length){
+        html+='<p class="inv-line"><b>Slow movers \u2014 no rush.</b> These sell less than 1 a day; they can sit at zero without an alarm.</p>';
+        html+=slow.map(function(p){
+          return '<p class="inv-line"><span class="nc-badge">Low \u2014 no rush</span> <b>'+esc(p.name)+'</b> \u2014 '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover ('+avgDay(p)+' a day). No reorder pressure.</p>';
+        }).join('');
+      }
+      lowBox.innerHTML=html;
     }
     // Full table, lowest first.
     var rows=sortRows(state.products.filter(function(p){ return matches(p,q,dept); }),th);
@@ -443,11 +476,11 @@ header .nav{max-width:none}
       tb.innerHTML=rows.map(function(p){
         var st=!p.counted?'<span class="nc-badge">Not counted yet</span>'
           :p.cover===null?'<span class="nc-badge">No sales history</span>'
-          :isLow(p,th)?'<span class="low-badge">\u25b2 LOW</span>':'<span class="ok-badge">\u2713 OK</span>';
+          :isLow(p,th)?(isFast(p)?'<span class="low-badge">\u25b2 LOW \u2014 order now</span>':'<span class="nc-badge">Low \u2014 no rush</span>'):'<span class="ok-badge">\u2713 OK</span>';
         return '<tr'+(p.counted&&isLow(p,th)?' class="lowrow"':'')+'><td>'+esc(p.name)+'</td><td>'+esc(p.sku)+'</td><td>'+deptChip(p.dept)+'</td><td class="num">'+money(p.sell)+'</td><td class="num">'+qty(p.opening)+'</td><td class="num">'+qty(p.received)+'</td><td class="num">'+qty(p.purchased)+'</td><td class="num">'+(p.outstanding===null||p.outstanding===undefined?'\u2014':(p.outstanding>0?'<b class="short">'+qty(p.outstanding)+' short</b>':qty(p.outstanding)))+'</td><td class="num">'+qty(p.sold)+'</td><td class="num">'+avgDay(p)+'</td><td class="num rem"><b>'+qty(p.remaining)+'</b></td><td class="num">'+coverTxt(p.cover)+'</td><td>'+st+'</td></tr>';
       }).join('');
     }
-    document.getElementById('invShowing').textContent='Showing '+rows.length+' of '+state.products.length+' products — lowest stock first.';
+    document.getElementById('invShowing').textContent='Showing '+rows.length+' of '+state.products.length+' products — fast sellers first, lowest stock first.';
     var skuCount=document.getElementById('invSkuCount'); if(skuCount) skuCount.textContent=state.products.length?state.products.length+' SKUs':'';
   }
   /* Extra tiles, built ONLY from data the page already has (products + history).
@@ -614,7 +647,7 @@ header .nav{max-width:none}
     }).catch(function(){ useSnapshot().then(function(){ render(); }); });
   }
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',load); } else { load(); }
-  window.__invTest={parseStock:parseStock,sortRows:sortRows,matches:matches,isLow:isLow,changePct:changePct,recommended:recommended,computeInsights:computeInsights,histMap:histMap,coverTxt:coverTxt,avgDay:avgDay,deptChip:deptChip};
+  window.__invTest={parseStock:parseStock,sortRows:sortRows,matches:matches,isLow:isLow,changePct:changePct,recommended:recommended,computeInsights:computeInsights,histMap:histMap,coverTxt:coverTxt,avgDay:avgDay,deptChip:deptChip,isFast:isFast,recommendedQty:recommendedQty};
 })();
 
 </script>
