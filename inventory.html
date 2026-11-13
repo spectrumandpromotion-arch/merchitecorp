@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="style.css">
 <style>
 /* Inventory Count — dark futuristic glass. */
-body{background:radial-gradient(1100px 560px at 85% -10%,rgba(20,184,166,.32),transparent 60%),radial-gradient(900px 520px at 0% 0%,rgba(245,158,11,.22),transparent 55%),radial-gradient(1000px 640px at 12% 58%,rgba(20,184,166,.16),transparent 60%),radial-gradient(900px 560px at 92% 88%,rgba(245,158,11,.15),transparent 60%),linear-gradient(180deg,#0b1220,#0f172a 45%,#111827);background-attachment:fixed;color:#e2e8f0}
+body{background:radial-gradient(1100px 520px at 85% -10%,rgba(20,184,166,.20),transparent 60%),radial-gradient(900px 480px at 0% 0%,rgba(245,158,11,.13),transparent 55%),linear-gradient(180deg,#0b1220,#0f172a 45%,#111827);background-attachment:fixed;color:#e2e8f0}
 main{max-width:none!important;width:100%!important;margin:0!important;padding:20px clamp(12px,2.5vw,32px) 48px!important}
 header{position:sticky;top:0;z-index:80}
 header .nav{max-width:none!important}
@@ -20,36 +20,36 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 #invDash .inv-head .ic{flex:none;width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(20,184,166,.30),rgba(20,184,166,.08));border:1px solid rgba(20,184,166,.5);color:#5eead4;box-shadow:0 0 18px rgba(20,184,166,.35)}
 #invDash .inv-head h2{color:#f8fafc;margin:2px 0 0;font-size:26px;line-height:1.2}
 #invDash .inv-asof{margin-left:auto;font-size:12px;font-weight:700;color:#5eead4;background:rgba(20,184,166,.16);border:1px solid rgba(20,184,166,.4);border-radius:99px;padding:6px 12px;white-space:nowrap}
-#invDash .inv-countbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:10px 12px;margin:10px 0;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+#invDash .inv-countbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.13);border-radius:12px;padding:10px 12px;margin:10px 0}
 #invDash .inv-countbar span{font-weight:800;color:#f8fafc;margin-right:auto}
 #invDash .inv-countbar .btn{padding:8px 14px;font-size:14px}
 #invDash .inv-status{font-size:13px;color:#fde68a;background:rgba(245,158,11,.12);border:1px solid rgba(251,191,36,.4);border-radius:10px;padding:10px 12px;margin:10px 0}
 #invDash .inv-status.ok{color:#a7f3d0;background:rgba(16,185,129,.14);border-color:rgba(52,211,153,.5)}
-#invDash .inv-stickybar{position:sticky;top:56px;z-index:30;background:rgba(9,15,28,.97);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:12px 14px;margin:12px 0;box-shadow:0 14px 30px rgba(0,0,0,.55)}
+#invDash .inv-stickybar{position:sticky;top:56px;z-index:30;background:rgba(11,18,32,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;margin:12px 0;box-shadow:0 10px 24px rgba(0,0,0,.35)}
 #invDash .inv-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:0}
 #invDash .inv-controls label{display:block;font-size:12px;font-weight:700;color:#94a3b8;margin-bottom:4px}
 #invDash .inv-controls input,#invDash .inv-controls select{background:rgba(255,255,255,.09);color:#f1f5f9;border:1px solid rgba(255,255,255,.22);border-radius:8px;padding:9px 10px;font-size:15px}
 #invDash .inv-controls input[type="search"]{min-width:min(280px,70vw)}
 #invDash .inv-controls input[type="number"]{width:90px}
 #invDash .inv-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;margin:12px 0;align-items:stretch}
-#invDash .inv-card{background:linear-gradient(165deg,rgba(255,255,255,.09),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:16px;backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;flex-direction:column;scroll-margin-top:130px}
+#invDash .inv-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:16px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;flex-direction:column;scroll-margin-top:130px}
 #invDash .inv-card h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#5eead4;display:flex;align-items:center;gap:8px}
 #invDash .inv-card h3 .ic{flex:none;display:inline-flex;color:#5eead4}
-#invDash .inv-card.low{background:linear-gradient(135deg,rgba(239,68,68,.20),rgba(245,158,11,.08));border-color:rgba(248,113,113,.65);box-shadow:0 0 28px rgba(239,68,68,.35),0 10px 30px rgba(0,0,0,.35)}
+#invDash .inv-card.low{background:linear-gradient(135deg,rgba(239,68,68,.26),rgba(245,158,11,.14));border-color:rgba(248,113,113,.65);box-shadow:0 0 28px rgba(239,68,68,.35),0 10px 30px rgba(0,0,0,.35)}
 #invDash .inv-card.low h3{color:#fca5a5}
 #invDash .inv-card.low h3 .ic{color:#f87171}
-#invDash .inv-card.ok{background:linear-gradient(135deg,rgba(16,185,129,.15),rgba(20,184,166,.06));border-color:rgba(52,211,153,.55);box-shadow:0 0 22px rgba(16,185,129,.28),0 10px 30px rgba(0,0,0,.35)}
-#invDash .inv-card.ret{background:linear-gradient(135deg,rgba(245,158,11,.13),rgba(245,158,11,.04));border-color:rgba(251,191,36,.55);box-shadow:0 0 20px rgba(245,158,11,.25),0 10px 30px rgba(0,0,0,.35)}
+#invDash .inv-card.ok{background:linear-gradient(135deg,rgba(16,185,129,.20),rgba(20,184,166,.10));border-color:rgba(52,211,153,.55);box-shadow:0 0 22px rgba(16,185,129,.28),0 10px 30px rgba(0,0,0,.35)}
+#invDash .inv-card.ret{background:linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06));border-color:rgba(251,191,36,.55);box-shadow:0 0 20px rgba(245,158,11,.25),0 10px 30px rgba(0,0,0,.35)}
 #invDash .inv-card.ret h3{color:#fcd34d}
 #invDash .inv-card.ret h3 .ic{color:#fbbf24}
-#invDash .inv-card.nc{background:rgba(148,163,184,.07);border-color:rgba(148,163,184,.35);box-shadow:0 10px 30px rgba(0,0,0,.3)}
+#invDash .inv-card.nc{background:rgba(148,163,184,.10);border-color:rgba(148,163,184,.35);box-shadow:0 10px 30px rgba(0,0,0,.3)}
 #invDash .inv-card.nc h3{color:#94a3b8}
 #invDash .inv-big{font-size:28px;font-weight:800;color:#f8fafc;line-height:1.15}
 #invDash .inv-name{font-size:17px;font-weight:700;color:#f8fafc;line-height:1.3;overflow-wrap:anywhere}
 #invDash .inv-line{font-size:13px;color:#cbd5e1;margin:6px 0 0;line-height:1.55;overflow-wrap:anywhere}
 #invDash .inv-num{font-size:13px;color:#e2e8f0;margin:3px 0}
 #invDash .inv-num b{color:#fff}
-#invDash .inv-hero{grid-column:span 8;background:linear-gradient(120deg,rgba(20,184,166,.24),rgba(20,184,166,.05) 60%,rgba(245,158,11,.08));border-color:rgba(45,212,191,.55);box-shadow:0 0 32px rgba(20,184,166,.35),0 10px 30px rgba(0,0,0,.35)}
+#invDash .inv-hero{grid-column:span 8;background:linear-gradient(120deg,rgba(20,184,166,.30),rgba(20,184,166,.07) 60%,rgba(245,158,11,.10));border-color:rgba(45,212,191,.55);box-shadow:0 0 32px rgba(20,184,166,.35),0 10px 30px rgba(0,0,0,.35)}
 #invDash .inv-hero .inv-big{font-size:40px}
 #invDash #invGlanceCard{grid-column:span 4}
 #invDash .inv-glance-mini{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-top:4px}
@@ -61,7 +61,7 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 #invDash .nc-badge{display:inline-block;font-size:11px;font-weight:700;color:#cbd5e1;background:rgba(148,163,184,.22);border:1px solid rgba(148,163,184,.5);border-radius:99px;padding:2px 9px;white-space:nowrap}
 #invDash .quiet-badge{display:inline-block;font-size:11px;font-weight:700;color:#fde68a;background:rgba(245,158,11,.16);border:1px solid rgba(251,191,36,.5);border-radius:99px;padding:2px 9px;white-space:nowrap}
 #invDash .inv-note{font-size:12px;color:#94a3b8;margin:10px 0 0}
-#invDash .inv-sku-toggle{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:14px 16px;color:#f8fafc;font:inherit;cursor:pointer;margin:14px 0 0;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+#invDash .inv-sku-toggle{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:14px 16px;color:#f8fafc;font:inherit;cursor:pointer;margin:14px 0 0;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
 #invDash .inv-sku-toggle:hover{background:rgba(255,255,255,.12)}
 #invDash .inv-sku-toggle .ic{flex:none;display:inline-flex;color:#5eead4}
 #invDash .inv-sku-toggle .t{font-weight:800;font-size:15px}
@@ -72,7 +72,7 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 #invDash .inv-chiprow{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
 #invDash .inv-chipbtn{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.06);color:#cbd5e1;border-radius:99px;padding:7px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 #invDash .inv-chipbtn.on{background:rgba(20,184,166,.28);border-color:#2dd4bf;color:#5eead4}
-#invDash .inv-tablewrap{background:rgba(255,255,255,.03);color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:6px 12px;overflow-x:auto;overflow-y:auto;max-height:78vh;-webkit-overflow-scrolling:touch;margin-top:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+#invDash .inv-tablewrap{background:rgba(255,255,255,.04);color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:6px 12px;overflow-x:auto;overflow-y:auto;max-height:62vh;-webkit-overflow-scrolling:touch;margin-top:12px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 #invDash .inv-tablewrap table{width:100%;border-collapse:collapse;font-size:13px;min-width:980px}
 #invDash .inv-tablewrap th,#invDash .inv-tablewrap td{padding:8px 6px;border-bottom:1px solid rgba(255,255,255,.09);text-align:left;white-space:nowrap;vertical-align:middle}
 #invDash .inv-tablewrap th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8}
@@ -89,7 +89,7 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 #invDash .mix-bar{height:10px;border-radius:99px;background:rgba(255,255,255,.14);overflow:hidden}
 #invDash .mix-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#2dd4bf,#0d9488);box-shadow:0 0 8px rgba(20,184,166,.6)}
 #invDash .mix-row .mix-num{text-align:right;font-weight:700;color:#f8fafc;white-space:nowrap}
-#invDash .inv-hot{margin:12px 0 4px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(245,158,11,.03));border:1px solid rgba(245,158,11,.55);border-radius:14px;padding:14px 16px;box-shadow:0 0 30px rgba(245,158,11,.25)}
+#invDash .inv-hot{margin:12px 0 4px;background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.55);border-radius:14px;padding:14px 16px;box-shadow:0 0 30px rgba(245,158,11,.25)}
 #invDash .inv-hot h3{margin:0 0 4px;font-size:17px;color:#fcd34d;display:flex;align-items:center;gap:8px}
 #invDash .inv-hot h3 .ic{color:#fbbf24;display:inline-flex}
 #invDash .inv-hot .inv-line{font-size:13px;color:#fde68a;margin:0 0 10px}
@@ -106,7 +106,7 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 #invDash .inv-mini th,#invDash .inv-mini td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,.09);text-align:left;white-space:nowrap;color:#e2e8f0}
 #invDash .inv-mini th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8}
 #invDash .inv-mini td.num,#invDash .inv-mini th.num{text-align:right}
-#invDash .inv-mini-wrap{max-height:none;overflow:visible}
+#invDash .inv-mini-wrap{max-height:280px;overflow-y:auto}
 #invDash .short{color:#fca5a5}
 @media (max-width:760px){
 #invDash .inv-hero .inv-big{font-size:28px}
@@ -116,12 +116,12 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 #invDash .inv-stickybar{top:52px}
 }
 /* --- Ask GENIE: floating circular button, bottom-right --- */
-.ask-genie-fab{position:fixed;right:22px;bottom:24px;width:80px;height:80px;border-radius:50%;border:0;cursor:pointer;z-index:70;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:linear-gradient(135deg,#14b8a6,#0b6b5d);color:#fff;box-shadow:0 8px 22px rgba(11,107,93,.45),0 2px 6px rgba(15,23,42,.25);font:inherit;padding:0}
+.ask-genie-fab{position:fixed;right:14px;bottom:14px;width:80px;height:80px;border-radius:50%;border:0;cursor:pointer;z-index:70;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:linear-gradient(135deg,#14b8a6,#0b6b5d);color:#fff;box-shadow:0 8px 22px rgba(11,107,93,.45),0 2px 6px rgba(15,23,42,.25);font:inherit;padding:0}
 .ask-genie-fab:hover{filter:brightness(1.08)}
 .ask-genie-fab:active{transform:scale(.96)}
 .ask-genie-star{font-size:15px;line-height:1}
 .ask-genie-label{font-size:11px;font-weight:800;line-height:1.2;text-align:center;white-space:nowrap}
-.ask-genie-x{position:fixed;right:18px;bottom:100px;width:24px;height:24px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:#1e293b;color:#e2e8f0;cursor:pointer;z-index:71;font-size:14px;line-height:1;padding:0}
+.ask-genie-x{position:fixed;right:8px;bottom:88px;width:24px;height:24px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:#1e293b;color:#e2e8f0;cursor:pointer;z-index:71;font-size:14px;line-height:1;padding:0}
 .ask-ai-panel{position:fixed;right:12px;bottom:102px;width:min(390px,calc(100vw - 24px));max-height:82vh;overflow-y:auto;background:rgba(13,20,36,.97);color:#e2e8f0;border:1px solid rgba(255,255,255,.16);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.5);z-index:60;padding:16px}
 .ask-ai-panel[hidden]{display:none}
 .ask-ai-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
@@ -147,7 +147,7 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 <body>
 <header><div class="nav">
 <a class="brand" href="index.html">Merchitecorp <span>&bull; Spectrum and Promotion</span></a>
-<nav><a class="link" href="index.html">Home</a><a class="link" href="dashboard.html">Dashboard</a><a class="link" href="login.html" id="loginLink">Log in</a></nav>
+<nav><a class="link" href="index.html">Home</a><a class="link" href="dashboard.html">Dashboard</a><a class="link" href="login.html">Log in</a></nav>
 </div></header>
 <main>
 <p><button class="btn" id="logoutBtn" type="button">Log out</button> <a class="btn" href="dashboard.html">Back to Dashboard</a></p></div>
@@ -163,6 +163,7 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 <div><label for="invThreshold">Low when cover is below (days)</label><input type="number" id="invThreshold" min="0" step="1" value="3"></div>
 </div>
 </div>
+
 <div class="inv-grid">
 <div class="inv-card inv-hero" id="invHero"><h3>Hero product of the day</h3><p class="inv-line">Loading&hellip;</p></div>
 <div class="inv-card" id="invGlanceCard"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span>Today at a glance &mdash; Nov 12</h3><div class="inv-glance-mini"><div><span class="g-label">Units sold</span><b id="invGlanceUnits">&mdash;</b></div><div><span class="g-label">Products sold</span><b id="invGlanceSkus">&mdash;</b></div><div><span class="g-label">Sales</span><b id="invGlanceSales">&mdash;</b></div><div><span class="g-label">Departments</span><b id="invGlanceDepts">&mdash;</b></div><div><span class="g-label">Top department (month)</span><b id="invGlanceTopDept">&mdash;</b></div></div></div>
@@ -170,19 +171,12 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 <div class="inv-card ret" id="invReturning"><h3>New / returning — this one is back</h3><p class="inv-line">Loading&hellip;</p></div>
 <div class="inv-card" id="invLowCard"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>Low stock</h3><div id="invLowList"><p class="inv-line">Loading&hellip;</p></div></div>
 <div class="inv-card" id="invOrders"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></span>Order list</h3><div id="invOrdersBody"><p class="inv-line">Loading&hellip;</p></div><p class="inv-line">Fast sellers first &mdash; buy 2&ndash;3 times a week to stay ahead. Supplier fills in once purchase orders land.</p></div>
-</div>
-<section class="inv-hot" id="invHot">
-<h3><span class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> Hot Sellers &mdash; by department</h3>
-<p class="inv-line" id="invHotLine">Top 5 in each department, departments ranked by units sold, Oct 13 &ndash; Nov 12, 2026. Fast sellers first &mdash; keep them on hand and buy 2&ndash;3 times a week.</p>
-<div class="inv-hot-wrap"><table class="inv-mini"><thead><tr><th>#</th><th>Product</th><th>SKU</th><th class="num">Units sold</th><th class="num">Days sold</th><th class="num">Avg / day</th><th class="num">Sell</th><th>In store now</th></tr></thead><tbody id="invHotBody"><tr><td colspan="8">Loading hot sellers&hellip;</td></tr></tbody></table></div>
-</section>
-<div class="inv-grid">
 <div class="inv-card" id="invMix"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span>Category mix — what the store sells</h3><div id="invMixBody"><p class="inv-line">Loading&hellip;</p></div><p class="inv-line">Units sold last month, by department (Oct 13 &ndash; Nov 12, 2026).</p></div>
 <div class="inv-card" id="invSlow"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg></span>Slow movers — gone quiet</h3><div id="invSlowBody"><p class="inv-line">Loading&hellip;</p></div><p class="inv-line">Sold last month, but nothing in the last 7 days — worth a look on the shelf.</p></div>
 <div class="inv-card" id="invRev"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Top 5 by revenue</h3><div id="invRevBody"><p class="inv-line">Loading&hellip;</p></div><p class="inv-line">Month sales dollars (units &times; sell price) &mdash; not profit.</p></div>
 <div class="inv-card" id="invBoard"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg></span>Department leaderboard</h3><div id="invBoardBody"><p class="inv-line">Loading&hellip;</p></div><p class="inv-line">Every department ranked by units sold last month, with month dollars alongside &mdash; the highest-quantity departments at a glance.</p></div>
 <div class="inv-card inv-quiet" id="invDead"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>Slow movers &mdash; sold once or twice</h3><div id="invDeadBody"><p class="inv-line">Loading&hellip;</p></div><p class="inv-line">Don&rsquo;t reorder these &mdash; they barely move. Let them sell through instead of tying up shelf space and money.</p></div>
-<div class="inv-card" id="invVendors"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>Vendor settlement</h3><div id="invVendorBody"><p class="inv-line">Loading&hellip;</p></div><p class="inv-line" id="invVendorNote">Debit and Credit come from the pay-outs entered on the Shift Sheet &mdash; the same source as the vendor journal. Settled when Debit = Credit; a difference shows as outstanding.</p></div>
+<div class="inv-card" id="invVendors"><h3><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>Vendor settlement</h3><div id="invVendorBody"><p class="inv-line">Loading&hellip;</p></div><p class="inv-line">Debit and Credit come from the pay-outs entered on the Shift Sheet &mdash; the same source as the vendor journal. Settled when Debit = Credit; a difference shows as outstanding.</p></div>
 </div>
 <button class="inv-sku-toggle closed" id="invSkuToggle" type="button" aria-expanded="false" aria-controls="invSkuBody"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span><span class="t">All SKUs &mdash; what sold &amp; what is in stock</span><span class="c" id="invSkuCount"></span><span class="chev" id="invSkuChev">&#9662;</span></button>
 <div class="inv-sku-body closed" id="invSkuBody">
@@ -193,6 +187,14 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 <tbody id="invTableBody"><tr><td colspan="13">Loading stock&hellip;</td></tr></tbody>
 </table></div>
 <p class="inv-note" id="invShowing"></p>
+</div>
+<button class="inv-sku-toggle closed" id="invHotToggle" type="button" aria-expanded="false" aria-controls="invHotBodyWrap"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span><span class="t">Hot Sellers &mdash; what is selling fast</span><span class="c" id="invHotCount"></span><span class="chev" id="invHotChev">&#9662;</span></button>
+<div class="inv-sku-body closed" id="invHotBodyWrap">
+<section class="inv-hot" id="invHot">
+<h3><span class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> Hot Sellers &mdash; by department</h3>
+<p class="inv-line" id="invHotLine">Top 5 in each department, departments ranked by units sold, Oct 13 &ndash; Nov 12, 2026. Fast sellers first &mdash; keep them on hand and buy 2&ndash;3 times a week.</p>
+<div class="inv-hot-wrap"><table class="inv-mini"><thead><tr><th>#</th><th>Product</th><th>SKU</th><th class="num">Units sold</th><th class="num">Days sold</th><th class="num">Avg / day</th><th class="num">Sell</th><th>In store now</th></tr></thead><tbody id="invHotBody"><tr><td colspan="8">Loading hot sellers&hellip;</td></tr></tbody></table></div>
+</section>
 </div>
 </section>
 </main>
@@ -218,7 +220,6 @@ footer{color:#94a3b8;border-top:1px solid rgba(255,255,255,.12)}
 var session = null;
 try { session = JSON.parse(sessionStorage.getItem('merchitecorp_session') || 'null'); } catch (err) {}
 if (!session || !session.email) { window.location.href = 'login.html'; return; }
-var lg=document.getElementById('loginLink'); if(lg) lg.style.display='none';
 var w=document.getElementById('welcome'); if(w) w.textContent='Logged in as '+session.email;
 var lo=document.getElementById('logoutBtn'); if(lo) lo.addEventListener('click', function () {
 try { sessionStorage.removeItem('merchitecorp_session'); } catch (err) {}
@@ -250,13 +251,6 @@ function moneyC(n){ return n===null||n===undefined?'—':'$'+Number(n).toLocaleS
 function qty(n){ return n===null||n===undefined?'—':(Number(n)%1===0?String(Number(n)):Number(n).toFixed(1)); }
 function coverTxt(c){ return c===null||c===undefined?'—':(c<1?c.toFixed(1):String(Math.round(c*10)/10))+' days'; }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-/* A product whose name is blank, or is just its own department (a POS row
-   recorded as CIGARETTES in the CIGARETTES department), has no real name
-   -- never show the department as its name. 19 such rows in the month
-   catalogue, all generic (18 x CIGARETTES, 1 x Candy). */
-function isUnnamed(p){ var n=String(p&&p.name||"").trim(), d=String(p&&p.dept||"").trim(); return !n || (d && n.toLowerCase()===d.toLowerCase()); }
-function dispName(p){ return isUnnamed(p)?"Unnamed product":String(p.name||"").trim(); }
-function nameHtml(p){ return isUnnamed(p)?("Unnamed product (SKU "+esc(p.sku)+")"):esc(p.name); }
 function histMap(){ var m={}; for(var i=0;i<INV_HISTORY.length;i++){ var r=INV_HISTORY[i]; m[r[0]]={d12:r[1],d12amt:r[2],s1:r[3],s2:r[4],s3:r[5],l7:r[6],p7:r[7],r10:r[8],m:r[9],pgap:r[10]}; } return m; }
 /* Stock rows: [Sku,Name,Dept,Sell,Opening,Received,Sold,Remaining,Purchased,Outstanding]. */
 /* sku-list.json fallback: [sku,name,dept,sell,sold]. */
@@ -343,20 +337,18 @@ if(g.units===null||g.units===undefined){ g.units=0; g.dollars=0; g.skus=g.items.
 groups.sort(function(a,b){ return (b.units||0)-(a.units||0); });
 return groups;
 }
-/* Fallback: group the month catalogue by dept, top 5 each.
-   Single source of truth is sku-list.json (state.products): each catalogue
-   row is one (SKU, name, dept) line. INV_HISTORY sums duplicate-SKU rows
-   into one month total and assigns it to one department, which drifted
-   department totals (TABACCO 6,146 vs 6,140; CIGARETTES 2,359 vs 2,398). */
+/* Fallback: group history by dept, top 5 each. */
 function computeHotGrouped(){
+var hm=histMap(), bySku={};
+state.products.forEach(function(p){ bySku[p.sku]=p; });
 var map={};
-state.products.forEach(function(p){
-if(!p.sold) return;
-var dept=p.dept||'';
+Object.keys(hm).forEach(function(sku){
+var h=hm[sku]; if(!h || !h.m) return;
+var p=bySku[sku], dept=p?p.dept:'';
 if(!map[dept]) map[dept]={dept:dept,units:0,dollars:0,skus:0,items:[]};
 var g=map[dept];
-g.units+=p.sold; g.dollars+=p.sold*(p.sell||0); g.skus+=1;
-g.items.push({rank:0,sku:p.sku,name:p.name,units:p.sold,days:null,avg:p.sold/31,sell:p.sell,stock:null});
+g.units+=h.m; g.dollars+=h.m*(p&&p.sell?p.sell:0); g.skus+=1;
+g.items.push({rank:0,sku:sku,name:p?p.name:sku,units:h.m,days:null,avg:h.m/31,sell:p?p.sell:null,stock:null});
 });
 var groups=Object.keys(map).map(function(k){ return map[k]; });
 groups.forEach(function(g){ g.items.sort(function(a,b){ return b.units-a.units; }); g.items=g.items.slice(0,5); g.items.forEach(function(it,i){ it.rank=i+1; }); });
@@ -371,8 +363,9 @@ var hotSec=$('invHot'); if(hotSec) hotSec.classList.toggle('no-stock',!anyCounte
 var line=$('invHotLine');
 var total=0; groups.forEach(function(g){ total+=g.items.length; });
 if(line){
-line.textContent=total+' hot sellers \u2014 top 5 in each department, departments ranked by units sold, Oct 13 \u2013 Nov 12, 2026'+((state.hotGroups && state.hotGroups.length)?' \u2014 from the Hot Sellers sheet.':' \u2014 from last month\u2019s sales.')+' Fast sellers first \u2014 keep them on hand and buy 2\u20133 times a week.';
+line.textContent=total+' hot sellers \u2014 top 5 in each department, departments ranked by units sold, Oct 13 \u2013 Nov 12, 2026'+((state.hotGroups && state.hotGroups.length)?' \u2014 from the Hot Sellers sheet.':' \u2014 from last month\u2019s sales; the sheet\u2019s own department totals can differ slightly.')+' Fast sellers first \u2014 keep them on hand and buy 2\u20133 times a week.';
 }
+var cnt=$('invHotCount'); if(cnt) cnt.textContent=total+' products';
 if(!groups.length){ body.innerHTML='<tr><td colspan="8">No hot sellers yet.</td></tr>'; return; }
 var bySku={}; state.products.forEach(function(p){ bySku[p.sku]=p; });
 var out=[];
@@ -383,20 +376,21 @@ var p=bySku[r.sku], stock;
 if(r.stock!==null && r.stock!==undefined && r.stock!==''){ var sv=num(r.stock); stock=(sv!==null)?qty(sv):'<span class="nc-badge">not counted yet</span>'; }
 else stock=(p && p.counted)?qty(p.remaining):'<span class="nc-badge">not counted yet</span>';
 var rankCls=r.rank===1?'inv-hot-rank top3':'inv-hot-rank';
-out.push('<tr><td class="'+rankCls+'">'+esc(r.rank)+'</td><td><b>'+esc(dispName({name:r.name,dept:g.dept}))+'</b> '+(g.dept?deptChip(g.dept):'')+'</td><td>'+esc(r.sku)+'</td><td class="num"><b>'+qty(r.units)+'</b></td><td class="num">'+(r.days===null||r.days===undefined?'\u2014':qty(r.days))+'</td><td class="num">'+(r.avg===null||r.avg===undefined?'\u2014':Number(r.avg).toFixed(1))+'</td><td class="num">'+money(r.sell)+'</td><td>'+stock+'</td></tr>');
+out.push('<tr><td class="'+rankCls+'">'+esc(r.rank)+'</td><td><b>'+esc(r.name)+'</b> '+(g.dept?deptChip(g.dept):'')+'</td><td>'+esc(r.sku)+'</td><td class="num"><b>'+qty(r.units)+'</b></td><td class="num">'+(r.days===null||r.days===undefined?'\u2014':qty(r.days))+'</td><td class="num">'+(r.avg===null||r.avg===undefined?'\u2014':Number(r.avg).toFixed(1))+'</td><td class="num">'+money(r.sell)+'</td><td>'+stock+'</td></tr>');
 });
 });
 body.innerHTML=out.join('');
 }
-/* Dept leaderboard: ranked by units, dollars alongside.
-   Same source as Category Mix (sku-list.json rows) — totals must agree. */
+/* Dept leaderboard: ranked by units, dollars alongside. */
 function computeDeptTotals(){
+var hm=histMap(), bySku={};
+state.products.forEach(function(p){ bySku[p.sku]=p; });
 var map={};
-state.products.forEach(function(p){
-if(!p.sold) return;
-var dept=p.dept||'';
+Object.keys(hm).forEach(function(sku){
+var h=hm[sku]; if(!h || !h.m) return;
+var p=bySku[sku], dept=p?p.dept:'';
 if(!map[dept]) map[dept]={dept:dept,units:0,dollars:0,skus:0};
-map[dept].units+=p.sold; map[dept].dollars+=p.sold*(p.sell||0); map[dept].skus+=1;
+map[dept].units+=h.m; map[dept].dollars+=h.m*(p&&p.sell?p.sell:0); map[dept].skus+=1;
 });
 var list=Object.keys(map).map(function(k){ return map[k]; });
 list.sort(function(a,b){ return b.units-a.units; });
@@ -433,7 +427,7 @@ var body=$('invDeadBody'); if(!body) return;
 var d=computeDead();
 var total=state.products.length||0;
 var top=d.list.slice(0,10).map(function(r){
-return '<tr><td><b>'+esc(dispName(r))+'</b> '+(r.dept?deptChip(r.dept):'')+'</td><td>'+esc(r.sku)+'</td><td class="num">'+qty(r.units)+'</td><td class="num">'+money(r.sell)+'</td></tr>';
+return '<tr><td><b>'+esc(r.name)+'</b> '+(r.dept?deptChip(r.dept):'')+'</td><td>'+esc(r.sku)+'</td><td class="num">'+qty(r.units)+'</td><td class="num">'+money(r.sell)+'</td></tr>';
 }).join('');
 body.innerHTML='<p class="inv-line">'+d.once+' products sold only once in the month, '+d.twice+' sold twice \u2014 '+(d.once+d.twice)+' of '+total+' SKUs barely move. Priciest slow movers (most money sitting on the shelf):</p><div class="inv-mini-wrap"><table class="inv-mini"><thead><tr><th>Product</th><th>SKU</th><th class="num">Sold</th><th class="num">Sell</th></tr></thead><tbody>'+top+'</tbody></table></div>';
 }
@@ -542,13 +536,13 @@ if(fast.length){
 html+='<p class="inv-line"><b>Order now \u2014 fast sellers first.</b> These sell 1+ a day on average; buy 2\u20133 times a week to stay ahead.</p>';
 html+=fast.map(function(p){
 var rec=recommendedQty(p,hm);
-return '<p class="inv-line"><span class="low-badge">\u25b2 LOW \u2014 order now</span> <b>'+nameHtml(p)+'</b> \u2014 '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover at its usual pace ('+avgDay(p)+' a day).'+(rec!==null?' Order <b>'+qty(rec)+'</b> \u2014 one week at last week\u2019s pace.':'')+' Check again in ~2\u20133 days.</p>';
+return '<p class="inv-line"><span class="low-badge">\u25b2 LOW \u2014 order now</span> <b>'+esc(p.name)+'</b> \u2014 '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover at its usual pace ('+avgDay(p)+' a day).'+(rec!==null?' Order <b>'+qty(rec)+'</b> \u2014 one week at last week\u2019s pace.':'')+' Check again in ~2\u20133 days.</p>';
 }).join('');
 }
 if(slow.length){
 html+='<p class="inv-line"><b>Slow movers \u2014 no rush.</b> These sell less than 1 a day; they can sit at zero without an alarm.</p>';
 html+=slow.map(function(p){
-return '<p class="inv-line"><span class="nc-badge">Low \u2014 no rush</span> <b>'+nameHtml(p)+'</b> \u2014 '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover ('+avgDay(p)+' a day). No reorder pressure.</p>';
+return '<p class="inv-line"><span class="nc-badge">Low \u2014 no rush</span> <b>'+esc(p.name)+'</b> \u2014 '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover ('+avgDay(p)+' a day). No reorder pressure.</p>';
 }).join('');
 }
 lowBox.innerHTML=html;
@@ -563,7 +557,7 @@ tb.innerHTML=rows.map(function(p){
 var st=!p.counted?'<span class="nc-badge">Not counted yet</span>'
 :p.cover===null?'<span class="nc-badge">No sales history</span>'
 :isLow(p,th)?(isFast(p)?'<span class="low-badge">\u25b2 LOW \u2014 order now</span>':'<span class="nc-badge">Low \u2014 no rush</span>'):'<span class="ok-badge">\u2713 OK</span>';
-return '<tr'+(p.counted&&isLow(p,th)?' class="lowrow"':'')+'><td>'+esc(dispName(p))+'</td><td>'+esc(p.sku)+'</td><td>'+deptChip(p.dept)+'</td><td class="num">'+money(p.sell)+'</td><td class="num">'+qty(p.opening)+'</td><td class="num">'+qty(p.received)+'</td><td class="num">'+qty(p.purchased)+'</td><td class="num">'+(p.outstanding===null||p.outstanding===undefined?'\u2014':(p.outstanding>0?'<b class="short">'+qty(p.outstanding)+' short</b>':qty(p.outstanding)))+'</td><td class="num">'+qty(p.sold)+'</td><td class="num">'+avgDay(p)+'</td><td class="num rem"><b>'+qty(p.remaining)+'</b></td><td class="num">'+coverTxt(p.cover)+'</td><td>'+st+'</td></tr>';
+return '<tr'+(p.counted&&isLow(p,th)?' class="lowrow"':'')+'><td>'+esc(p.name)+'</td><td>'+esc(p.sku)+'</td><td>'+deptChip(p.dept)+'</td><td class="num">'+money(p.sell)+'</td><td class="num">'+qty(p.opening)+'</td><td class="num">'+qty(p.received)+'</td><td class="num">'+qty(p.purchased)+'</td><td class="num">'+(p.outstanding===null||p.outstanding===undefined?'\u2014':(p.outstanding>0?'<b class="short">'+qty(p.outstanding)+' short</b>':qty(p.outstanding)))+'</td><td class="num">'+qty(p.sold)+'</td><td class="num">'+avgDay(p)+'</td><td class="num rem"><b>'+qty(p.remaining)+'</b></td><td class="num">'+coverTxt(p.cover)+'</td><td>'+st+'</td></tr>';
 }).join('');
 }
 $('invShowing').textContent='Showing '+rows.length+' of '+state.products.length+' products — '+(state.chip==='low'?'low stock only.':state.chip==='uncounted'?'not counted only.':(counted.length?'fast sellers first, lowest stock first.':'best sellers first (nothing counted yet).'));
@@ -597,7 +591,7 @@ slow.sort(function(a,b){ return b.h.m-a.h.m; });
 if(!slow.length){ slowBox.innerHTML='<p class="inv-line">Everything sold last month is still moving — nothing has gone quiet in the last 7 days.</p>'; }
 else {
 slowBox.innerHTML=slow.slice(0,5).map(function(r){
-return '<p class="inv-line"><span class="quiet-badge">Quiet 7 days</span> <b>'+nameHtml(r.p)+'</b> '+deptChip(r.p.dept)+' — sold '+qty(r.h.m)+' last month, nothing in the last 7 days.</p>';
+return '<p class="inv-line"><span class="quiet-badge">Quiet 7 days</span> <b>'+esc(r.p.name)+'</b> '+deptChip(r.p.dept)+' — sold '+qty(r.h.m)+' last month, nothing in the last 7 days.</p>';
 }).join('');
 }
 }
@@ -627,7 +621,7 @@ return;
 }
 box.innerHTML=head+fast.slice(0,10).map(function(p){
 var rec=recommendedQty(p,hm);
-return '<tr><td><b>'+nameHtml(p)+'</b> '+deptChip(p.dept)+'</td><td class="num">'+coverTxt(p.cover)+'</td><td class="num"><b>'+qty(rec)+'</b></td><td>\u2014</td></tr>';
+return '<tr><td><b>'+esc(p.name)+'</b> '+deptChip(p.dept)+'</td><td class="num">'+coverTxt(p.cover)+'</td><td class="num"><b>'+qty(rec)+'</b></td><td>\u2014</td></tr>';
 }).join('')+'</tbody></table></div>';
 }
 /* Top 5 by revenue: month sales dollars, not profit. */
@@ -648,7 +642,7 @@ var box=$('invRevBody'); if(!box) return;
 var top=computeRev();
 if(!top.length){ box.innerHTML='<p class="inv-line">No sales history yet.</p>'; return; }
 box.innerHTML='<div class="inv-mini-wrap"><table class="inv-mini"><thead><tr><th>#</th><th>Product</th><th class="num">Units</th><th class="num">Month $</th></tr></thead><tbody>'+top.map(function(r,i){
-return '<tr><td class="inv-hot-rank">'+(i+1)+'</td><td><b>'+nameHtml(r)+'</b> '+deptChip(r.dept)+'</td><td class="num">'+qty(r.units)+'</td><td class="num"><b>'+moneyC(r.rev)+'</b></td></tr>';
+return '<tr><td class="inv-hot-rank">'+(i+1)+'</td><td><b>'+esc(r.name)+'</b> '+deptChip(r.dept)+'</td><td class="num">'+qty(r.units)+'</td><td class="num"><b>'+moneyC(r.rev)+'</b></td></tr>';
 }).join('')+'</tbody></table></div>';
 }
 /* Vendor settlement from Shift Sheet pay-outs (localStorage). */
@@ -674,13 +668,10 @@ v.debit+=amt; v.credit+=amt;
 });
 }catch(e){}
 var names=Object.keys(vendors).sort();
-var nt=document.getElementById('invVendorNote');
 if(!names.length){
-if(nt) nt.style.display='none';
-box.innerHTML='<p class="inv-line">No pay-outs entered yet \u2014 <a href="shift-sheet.html">add a pay-out</a> on the Shift Sheet.</p>';
+box.innerHTML='<p class="inv-line">No pay-outs entered yet.</p><p><a class="btn" href="shift-sheet.html">Add a pay-out</a></p>';
 return;
 }
-if(nt) nt.style.display='';
 var totD=0, totC=0, rows='';
 names.forEach(function(n){
 var v=vendors[n], diff=v.debit-v.credit; totD+=v.debit; totC+=v.credit;
@@ -698,8 +689,8 @@ function heroHTML(name,dept,qty12,amt12,line,shiftLine){
 return '<h3><span class="ic">'+IC.zap+'</span>Hero product of the day — '+esc(HIST_ASOF)+'</h3><div class="inv-big">'+esc(name)+'</div><p class="inv-num">'+qty(qty12)+' sold on '+esc(HIST_ASOF)+' &middot; '+money(amt12)+' in sales</p><p class="inv-line">'+esc(line)+'</p>'+(shiftLine?'<p class="inv-line">'+esc(shiftLine)+'</p>':'');
 }
 if(ins.hero){
-var sl=ins.shifts.map(function(sh,i){ return sh?['1st','2nd','3rd'][i]+' '+dispName(sh.p)+' ('+qty(sh.h[['s1','s2','s3'][i]])+')':null; }).filter(function(x){ return x; }).join(' \u00b7 ');
-heroBox.innerHTML=heroHTML(dispName(ins.hero.p),ins.hero.p.dept,ins.hero.h.d12,ins.hero.h.d12amt,insightLine(ins.hero.p,ins.hero.h),sl?'Shifts on '+HIST_ASOF+' \u2014 '+sl+'.':'');
+var sl=ins.shifts.map(function(sh,i){ return sh?['1st','2nd','3rd'][i]+' '+sh.p.name+' ('+qty(sh.h[['s1','s2','s3'][i]])+')':null; }).filter(function(x){ return x; }).join(' \u00b7 ');
+heroBox.innerHTML=heroHTML(ins.hero.p.name,ins.hero.p.dept,ins.hero.h.d12,ins.hero.h.d12amt,insightLine(ins.hero.p,ins.hero.h),sl?'Shifts on '+HIST_ASOF+' \u2014 '+sl+'.':'');
 } else {
 heroBox.innerHTML='<h3><span class="ic">'+IC.zap+'</span>Hero product of the day</h3><p class="inv-line">No sales history yet.</p>';
 }
@@ -708,7 +699,7 @@ if(top){
 var tp=top.p, th2=top.h, ch=changePct(th2.l7,th2.p7), rec=recommended(th2.l7);
 var cur=tp.counted?qty(tp.remaining):'not counted yet';
 var chTxt=(ch===null)?'No sales the week before.':((ch>0?'up '+ch+'%':ch<0?'down '+Math.abs(ch)+'%':'same as last week')+'.');
-topBox.innerHTML='<h3><span class="ic">'+IC.medal+'</span>Top seller</h3><div class="inv-name">'+esc(dispName(tp))+'</div>'
+topBox.innerHTML='<h3><span class="ic">'+IC.medal+'</span>Top seller</h3><div class="inv-name">'+esc(tp.name)+'</div>'
 +'<p class="inv-num">In store now: <b>'+esc(cur)+'</b></p>'
 +'<p class="inv-num">Selling: <b>'+qty(th2.l7)+' in the last 7 days</b></p>'
 +'<p class="inv-num">Last 7 days: <b>'+qty(th2.l7)+'</b> vs '+qty(th2.p7)+' the week before \u2014 '+esc(chTxt)+'</p>'
@@ -722,7 +713,7 @@ if(ret){
 retBox.innerHTML='<h3><span class="ic">'+IC.refresh+'</span>New / returning \u2014 this one is back</h3>'+ret.map(function(r){
 var gap=r.h.pgap;
 var line=(gap===null||gap===undefined)?'First time sold \u2014 '+qty(r.h.d12)+' sold on '+esc(HIST_ASOF)+'.':'Back after '+gap+' days with no sales \u2014 '+qty(r.h.d12)+' sold on '+esc(HIST_ASOF)+'.';
-return '<p class="inv-line"><b>'+nameHtml(r.p)+'</b> '+deptChip(r.p.dept)+' \u2014 '+esc(line)+'</p>';
+return '<p class="inv-line"><b>'+esc(r.p.name)+'</b> '+deptChip(r.p.dept)+' \u2014 '+esc(line)+'</p>';
 }).join('');
 } else {
 retBox.innerHTML='<h3><span class="ic">'+IC.refresh+'</span>New / returning \u2014 this one is back</h3><p class="inv-line">No sales history yet.</p>';
@@ -746,6 +737,12 @@ if(skuToggle && skuBody){ skuToggle.addEventListener('click',function(){
 var closed=skuBody.classList.toggle('closed');
 skuToggle.classList.toggle('closed',closed);
 skuToggle.setAttribute('aria-expanded',closed?'false':'true');
+}); }
+var hotToggle=$('invHotToggle'), hotBody=$('invHotBodyWrap');
+if(hotToggle && hotBody){ hotToggle.addEventListener('click',function(){
+var closed=hotBody.classList.toggle('closed');
+hotToggle.classList.toggle('closed',closed);
+hotToggle.setAttribute('aria-expanded',closed?'false':'true');
 }); }
 fetch(SYNC_URL+'?action=stock').then(function(r){ return r.json(); }).then(function(d){
 if(d && d.ok && d.stock && d.stock.length>1){
@@ -778,7 +775,6 @@ qsBox=$('askAiQs'), input=$('askAiInput'),
 sendBtn=$('askAiSend'), ansBox=$('askAiAnswer'),
 srcEl=$('askAiSrc');
 function data(){ return window.__invData||null; }
-function dn(p){ var n=String(p&&p.name||'').trim(), d=String(p&&p.dept||'').trim(); if(!n||(d&&n.toLowerCase()===d.toLowerCase())) return 'Unnamed product (SKU '+p.sku+')'; return p.name; }
 function qty(n){ return n===null||n===undefined?'—':(Number(n)%1===0?String(Number(n)):Number(n).toFixed(1)); }
 function money(n){ return n===null||n===undefined?'—':'$'+Number(n).toFixed(2); }
 function coverTxt(c){ return c===null||c===undefined?'—':(c<1?c.toFixed(1):String(Math.round(c*10)/10))+' days'; }
@@ -805,7 +801,7 @@ if(key==='low' || key==='order'){
 if(!ps.length) return 'No stock data yet — the stock feed is not connected. Once Apps Script v11 is deployed and the opening count is set, I can list what is low.';
 var low=lowList(), th=dv.lowDays();
 if(!low.length) return 'Nothing is low right now — every counted product covers at least '+th+' days at its own sales pace.';
-var lines=low.slice(0,8).map(function(p){ return dn(p)+' — '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover.'; });
+var lines=low.slice(0,8).map(function(p){ return p.name+' — '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover.'; });
 return (key==='order'?'Order these first (lowest cover first): ':'Low right now (cover below '+th+' days at each product\u2019s own pace): ')+lines.join(' ')+(low.length>8?' And '+(low.length-8)+' more — see the order list on the page.':'');
 }
 if(key==='count'){
@@ -819,17 +815,17 @@ if(!ps.length) return 'No stock data yet — the stock feed is not connected.';
 var withCover=ps.filter(function(p){ return p.counted && p.cover!==null; })
 .sort(function(a,b){ return a.cover-b.cover; }).slice(0,5);
 if(!withCover.length) return 'No counted product has a sales history yet, so I cannot work out days of cover.';
-return 'These will run out first: '+withCover.map(function(p){ return dn(p)+' — '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover.'; }).join(' ');
+return 'These will run out first: '+withCover.map(function(p){ return p.name+' — '+qty(p.remaining)+' left, about '+coverTxt(p.cover)+' of cover.'; }).join(' ');
 }
 if(key==='notcounted'){
 if(!ps.length) return 'No stock data yet — the stock feed is not connected.';
 var nc=ps.filter(function(p){ return !p.counted; });
 if(!nc.length) return 'Every product has a count set.';
-return nc.length+' products have no count set yet, including: '+nc.slice(0,5).map(function(p){ return dn(p); }).join(', ')+(nc.length>5?' and '+(nc.length-5)+' more.':'');
+return nc.length+' products have no count set yet, including: '+nc.slice(0,5).map(function(p){ return p.name; }).join(', ')+(nc.length>5?' and '+(nc.length-5)+' more.':'');
 }
 if(key==='hero'){
 var ins=dv?dv.insights():null, h=ins&&ins.hero?ins.hero:null;
-if(h) return 'Hero product on '+dv.asOf+': '+dn(h.p)+' — '+qty(h.h.d12)+' sold, the most of any product that day ('+money(h.h.d12amt)+' in sales). Sold '+qty(h.h.m)+' in the last month.';
+if(h) return 'Hero product on '+dv.asOf+': '+h.p.name+' — '+qty(h.h.d12)+' sold, the most of any product that day ('+money(h.h.d12amt)+' in sales). Sold '+qty(h.h.m)+' in the last month.';
 if(s) return 'Hero product on '+s.asOf+': '+s.hero.name+' — '+qty(s.hero.qty12)+' sold, the most of any product that day ('+money(s.hero.amt12)+' in sales). Sold '+qty(s.hero.month)+' in the last month.';
 return 'No sales history to pick a hero product from.';
 }
@@ -837,7 +833,7 @@ if(key==='top' || key==='sold7'){
 var ins2=dv?dv.insights():null, t=ins2&&ins2.top?ins2.top:null;
 if(t){
 var cur=t.p.counted?qty(t.p.remaining):'not counted yet';
-return 'Top seller: '+dn(t.p)+'. In store now: '+cur+'. Selling: '+qty(t.h.l7)+' in the last 7 days, vs '+qty(t.h.p7)+' the week before. Recommended to keep / order: '+qty(Math.ceil(t.h.l7))+' — one week at last week\u2019s pace.';
+return 'Top seller: '+t.p.name+'. In store now: '+cur+'. Selling: '+qty(t.h.l7)+' in the last 7 days, vs '+qty(t.h.p7)+' the week before. Recommended to keep / order: '+qty(Math.ceil(t.h.l7))+' — one week at last week\u2019s pace.';
 }
 if(s) return 'Top seller: '+s.topSeller.name+'. In store now: not counted yet. Selling: '+qty(s.topSeller.last7)+' in the last 7 days, vs '+qty(s.topSeller.prev7)+' the week before. Recommended to keep / order: '+qty(s.topSeller.recommended)+' — one week at last week\u2019s pace.';
 return 'No sales history to pick a top seller from.';
@@ -846,7 +842,7 @@ if(key==='returning'){
 var ins3=dv?dv.insights():null, ret=ins3&&ins3.returning.length?ins3.returning:null;
 if(ret) return 'Back after 10 days with no sales: '+ret.map(function(r){
 var gap=r.h.pgap;
-return dn(r.p)+' — '+(gap===null||gap===undefined?'first time sold, '+qty(r.h.d12)+' sold on '+dv.asOf+'.':'back after '+gap+' days with no sales, '+qty(r.h.d12)+' sold on '+dv.asOf+'.');
+return r.p.name+' — '+(gap===null||gap===undefined?'first time sold, '+qty(r.h.d12)+' sold on '+dv.asOf+'.':'back after '+gap+' days with no sales, '+qty(r.h.d12)+' sold on '+dv.asOf+'.');
 }).join(' ');
 if(s) return 'Back after 10 days with no sales: '+s.returning.map(function(r){
 return r.name+' — '+(r.firstSale?'first time sold, '+qty(r.qty12)+' sold on '+s.asOf+'.':'back after '+r.gapDays+' days with no sales, '+qty(r.qty12)+' sold on '+s.asOf+'.');
@@ -861,8 +857,8 @@ var q=term.toLowerCase();
 var found=ps.filter(function(p){ return (p.name||'').toLowerCase().indexOf(q)>-1 || (p.sku||'').toLowerCase().indexOf(q)>-1; });
 if(!found.length) return 'No product matches \u201c'+term+'\u201d in the stock list.';
 return found.slice(0,5).map(function(p){
-if(!p.counted) return dn(p)+' — not counted yet.';
-return dn(p)+' — '+qty(p.remaining)+' left'+(p.cover!==null?', about '+coverTxt(p.cover)+' of cover at its usual pace':'')+'. Sold '+qty(p.sold)+' last month.';
+if(!p.counted) return p.name+' — not counted yet.';
+return p.name+' — '+qty(p.remaining)+' left'+(p.cover!==null?', about '+coverTxt(p.cover)+' of cover at its usual pace':'')+'. Sold '+qty(p.sold)+' last month.';
 }).join(' ')+(found.length>5?' And '+(found.length-5)+' more match.':'');
 }
 return 'I can only answer from the stock data on this page — what is low, what to order, counts, the hero product, the top seller, what is back after 10 days, and how many of a product we have. Pick one of the prebuilt questions above.';
