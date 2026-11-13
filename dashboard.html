@@ -59,9 +59,14 @@
   .acc-body{padding:14px 10px}
   #profit table{min-width:480px}
 }
-/* --- Ask AI: button top-right, chat panel hidden until opened --- */
-.ask-ai-btn{background:var(--accent2);color:#fff;white-space:nowrap}
-.ask-ai-panel{position:fixed;right:12px;bottom:12px;width:min(390px,calc(100vw - 24px));max-height:82vh;overflow-y:auto;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(15,23,42,.28);z-index:60;padding:16px}
+/* --- Ask AI: floating Ask GENIE button, bottom-right; panel sits above it --- */
+/* --- Ask GENIE: floating circular button, bottom-right --- */
+.ask-genie-fab{position:fixed;right:14px;bottom:14px;width:80px;height:80px;border-radius:50%;border:0;cursor:pointer;z-index:70;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:linear-gradient(135deg,#14b8a6,#0b6b5d);color:#fff;box-shadow:0 8px 22px rgba(11,107,93,.45),0 2px 6px rgba(15,23,42,.25);font:inherit;padding:0}
+.ask-genie-fab:hover{filter:brightness(1.08)}
+.ask-genie-fab:active{transform:scale(.96)}
+.ask-genie-star{font-size:15px;line-height:1}
+.ask-genie-label{font-size:11px;font-weight:800;line-height:1.2;text-align:center;white-space:nowrap}
+.ask-ai-panel{position:fixed;right:12px;bottom:102px;width:min(390px,calc(100vw - 24px));max-height:82vh;overflow-y:auto;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(15,23,42,.28);z-index:60;padding:16px}
 .ask-ai-panel[hidden]{display:none}
 .ask-ai-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .ask-ai-head h2{margin:0;font-size:18px;flex:1}
@@ -84,7 +89,7 @@
 <body>
 <header><div class="nav">
 <a class="brand" href="index.html">Merchitecorp <span>• Spectrum and Promotion</span></a>
-<nav><a class="link" href="index.html">Home</a><a class="link" href="login.html">Log in</a><button class="btn ask-ai-btn" id="askAiBtn" type="button" aria-controls="askAiPanel">Ask AI</button></nav>
+<nav><a class="link" href="index.html">Home</a><a class="link" href="login.html">Log in</a></nav>
 </div></header>
 <main>
 <div class="hero"><h1 id="welcome">Welcome back</h1><p>You are logged in on this device for this visit only. Closing the tab or browser logs you out, and you will need the password again next time. This page is reached through the login on this site — the same address works on any phone or network.</p>
@@ -119,6 +124,7 @@
 </div>
 </div>
 </main>
+<button class="ask-genie-fab" id="askAiBtn" type="button" aria-controls="askAiPanel" aria-label="Ask GENIE"><span class="ask-genie-star" aria-hidden="true">&#10022;</span><span class="ask-genie-label">Ask GENIE</span></button>
 <footer>© Merchitecorp — Spectrum and Promotion · <a href="mailto:spectrumandpromotion@gmail.com">spectrumandpromotion@gmail.com</a></footer>
 <script>
 // Guard: if there is no login flag in this browser, send the visitor to the login page.
