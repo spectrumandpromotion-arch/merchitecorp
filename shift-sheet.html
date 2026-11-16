@@ -317,7 +317,7 @@ function fmtOut(v,f){
 }
 
 /* ---------- state ---------- */
-var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[],vendEdit:false,vendDraft:[]},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0}};
+var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[],vendEdit:false,vendDraft:[],vendEditEntry:null},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0}};
 var mode='init',dbCol=null,dbSet=null;
 var dirty={},ver={},saving=false,saveTimer=null,armed=false,armTimer=null,resetArmed=false,resetTimer=null;
 function ensureDay(d){if(!state.days[d])state.days[d]=normDay(null);return state.days[d];}
@@ -755,15 +755,7 @@ function repWeekView(d){
   h+='</div>';
   return {h:h,totals:{has:true,collected:tot.collected,sales:tot.sales,so:tot.so}};
 }
-function drepDayPayOuts(d){
-  if(!state.drepData)return null;
-  var tot=0,n=0,any=false;
-  for(var i=0;i<N_SHIFTS;i++){
-    var r=drepShiftRow(d,i);
-    if(r&&String(r[15]||'').trim()!==''){tot=r2(tot+num(r[15]));n++;any=true;}
-  }
-  return any?{total:tot,n:n}:null;
-}
+
 function settledPill(debit,credit){
   var d=r2(debit-credit);
   if(Math.abs(d)<0.005)return '<span class="pill ok">Settled</span>';
@@ -772,24 +764,23 @@ function settledPill(debit,credit){
 function vendorTotals(items){
   var map={},order=[];
   items.forEach(function(x){
-    var k=x.desc;
-    if(!map[k]){map[k]={vendor:x.desc,debit:0,credit:0};order.push(k);}
-    var a=r2(num(x.amt));
-    map[k].debit=r2(map[k].debit+a);map[k].credit=r2(map[k].credit+a);
+    var k=x.vendor;
+    if(!map[k]){map[k]={vendor:x.vendor,type:x.type,debit:0,credit:0,n:0};order.push(k);}
+    map[k].debit=r2(map[k].debit+x.debit);map[k].credit=r2(map[k].credit+x.credit);map[k].n++;
   });
-  return order.map(function(k){return map[k];});
+  return order.map(function(k){return map[k];}).sort(function(a,b){return b.debit-a.debit;});
 }
 function vendorJournalHtml(d){
-  var vd=vendorDayItems(d);
+  var vd=vendDayItems(d);
   var h='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>Vendor journal \u2014 '+fmtDayLong(d)+'</h2>';
   if(!vd.has){
-    h+='<p class="note">No vendor payments this day.</p>';
+    h+='<p class="note">No vendor entries this day. Add them on the Vendors tab \u2014 vendors are entered by hand, not from any report.</p>';
   }else{
     var debitT=0,creditT=0;
     h+='<div class="tbl"><table><thead><tr><th>Date</th><th>Vendor</th><th>Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th></tr></thead><tbody>';
     vd.items.forEach(function(x){
-      var a=r2(num(x.amt));debitT=r2(debitT+a);creditT=r2(creditT+a);
-      h+='<tr><td>'+fmtDay(d)+'</td><td>'+esc(x.desc)+'</td><td>'+esc(x.cat)+'</td><td style="text-align:right">'+usd(a)+'</td><td style="text-align:right">'+usd(a)+'</td></tr>';
+      debitT=r2(debitT+x.debit);creditT=r2(creditT+x.credit);
+      h+='<tr><td>'+fmtDay(x.date)+'</td><td>'+esc(x.vendor)+'</td><td>'+esc(x.type)+'</td><td style="text-align:right">'+usd(x.debit)+'</td><td style="text-align:right">'+usd(x.credit)+'</td></tr>';
     });
     h+='<tr class="key"><td colspan="3">Total</td><td style="text-align:right">'+usd(debitT)+'</td><td style="text-align:right">'+usd(creditT)+'</td></tr>';
     h+='</tbody></table></div>';
@@ -800,10 +791,6 @@ function vendorJournalHtml(d){
     h+='</tbody></table></div>';
     var bal=Math.abs(debitT-creditT)<0.005;
     h+='<p style="margin-top:12px"><span class="pill '+(bal?'ok':'short')+'">'+(bal?'Balanced':'Not balanced')+'</span></p>';
-    var dc=drepDayPayOuts(d);
-    if(dc){
-      h+='<p class="note">Closing report pay outs: '+usd(dc.total)+(dc.n<3?' ('+dc.n+' of 3 shifts so far)':'')+(Math.abs(dc.total-debitT)<0.005?' \u2014 matches the journal.':' \u2014 differs from the journal by '+usd(r2(dc.total-debitT))+'.')+'</p>';
-    }
   }
   h+='</div></div>';
   return h;
@@ -1029,75 +1016,104 @@ function renderDailyReports(){
   $('#main').innerHTML=h;
 }
 
-/* ---------- vendors tab ---------- */
-function vendorDayItems(d){
-  var day=state.days[d],items=[],total=0;
-  if(day)day.shifts.forEach(function(s,i){
-    s.payouts.forEach(function(x){
-      if(num(x.amt))items.push({cat:x.cat||'',desc:(x.desc||'').trim()?x.desc:(x.cat||''),amt:x.amt,shift:i+1});
-    });
-  });
-  items.forEach(function(x){total=r2(total+num(x.amt));});
+/* ---------- vendors tab (MANUAL — entered by hand, never from pay-outs or any report) ---------- */
+var VEND_LS='gas-vendors-manual-v1';
+var vendList=[];
+function vendLoad(){
+  try{vendList=JSON.parse(localStorage.getItem(VEND_LS)||'[]')||[];}catch(e){vendList=[];}
+  if(!Array.isArray(vendList))vendList=[];
+  vendList=vendList.filter(function(x){return x&&validDate(x.date)&&String(x.vendor||'').trim();});
+}
+function vendSave(){
+  try{localStorage.setItem(VEND_LS,JSON.stringify(vendList));}catch(e){}
+}
+function vendId(){return 'v'+Date.now().toString(36)+Math.floor(Math.random()*1e6).toString(36);}
+function vendNorm(x){
+  return {id:x.id||vendId(),date:x.date,vendor:String(x.vendor||'').trim(),type:String(x.type||'Vendor').trim()||'Vendor',debit:r2(num(x.debit)),credit:r2(num(x.credit))};
+}
+function vendAdd(x){
+  var e=vendNorm(x);
+  if(!e.vendor||!validDate(e.date))return null;
+  vendList.push(e);vendSave();return e;
+}
+function vendUpdate(id,x){
+  var e=null;
+  vendList.forEach(function(v){if(v.id===id)e=v;});
+  if(!e)return false;
+  var n=vendNorm(x);n.id=id;
+  e.date=n.date;e.vendor=n.vendor;e.type=n.type;e.debit=n.debit;e.credit=n.credit;
+  vendSave();return true;
+}
+function vendDelete(id){
+  var n=vendList.length;
+  vendList=vendList.filter(function(v){return v.id!==id;});
+  if(vendList.length!==n){vendSave();return true;}
+  return false;
+}
+function vendRename(oldName,newName){
+  var o=String(oldName||'').trim(),n=String(newName||'').trim();
+  if(!o||!n||o===n)return 0;
+  var c=0;
+  vendList.forEach(function(v){if(v.vendor===o){v.vendor=n;c++;}});
+  if(c)vendSave();
+  return c;
+}
+function vendDayItems(d){
+  var items=vendList.filter(function(v){return v.date===d;}).slice().sort(function(a,b){return a.vendor<b.vendor?-1:a.vendor>b.vendor?1:0;});
+  var total=r2(sum(items.map(function(v){return v.debit;})));
   return {items:items,total:total,has:items.length>0};
+}
+function vendWeekItems(ws){
+  var we=addDaysStr(ws,6);
+  return vendList.filter(function(v){return v.date>=ws&&v.date<=we;});
 }
 function allVendorNames(){
   var seen={},names=[];
-  Object.keys(state.days).forEach(function(d){
-    state.days[d].shifts.forEach(function(s){
-      s.payouts.forEach(function(x){
-        if(!num(x.amt))return;
-        var w=(x.desc||'').trim();
-        if(!w||seen[w])return;
-        seen[w]=1;names.push(w);
-      });
-    });
-  });
+  vendList.forEach(function(v){if(!seen[v.vendor]){seen[v.vendor]=1;names.push(v.vendor);}});
   return names.sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
-}
-function applyVendorRenames(){
-  var U=state.ui,changed={};
-  U.vendDraft.forEach(function(e){
-    var nw=String(e.cur||'').trim();
-    if(nw&&nw!==e.old)changed[e.old]=nw;
-  });
-  if(!Object.keys(changed).length)return 0;
-  var days=0;
-  Object.keys(state.days).forEach(function(d){
-    var hit=false;
-    state.days[d].shifts.forEach(function(s){
-      s.payouts.forEach(function(x){
-        var w=(x.desc||'').trim();
-        if(w&&changed[w]){x.desc=changed[w];hit=true;}
-      });
-    });
-    if(hit){markDirty(d);days++;}
-  });
-  return days;
 }
 function renderVendors(){
   var d=state.date;
-  var vd=vendorDayItems(d);
-  var h='<div class="grid"><div class="card wide"><h2>Vendors paid — '+fmtDayLong(d)+'</h2>';
-  h+=vd.has?repPayoutList(vd.items):'<p class="note">No vendor payments this day.</p>';
-  if(vd.has)h+='<div class="tot"><span>Day total</span><b>'+usd(vd.total)+'</b></div>';
+  var U=state.ui;
+  var vd=vendDayItems(d);
+  var h='<div class="grid"><div class="card wide"><h2>Vendors paid \u2014 '+fmtDayLong(d)+'</h2>';
+  if(vd.has){
+    h+='<div class="tbl"><table><thead><tr><th>Vendor</th><th>Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th></th></tr></thead><tbody>';
+    vd.items.forEach(function(x){
+      h+='<tr><td>'+esc(x.vendor)+'</td><td>'+esc(x.type)+'</td><td style="text-align:right">'+usd(x.debit)+'</td><td style="text-align:right">'+usd(x.credit)+'</td><td style="white-space:nowrap"><button type="button" class="link" data-vend="edit-entry" data-vid="'+x.id+'">Edit</button> <button type="button" class="link" data-vend="del" data-vid="'+x.id+'">Delete</button></td></tr>';
+    });
+    h+='<tr class="key"><td colspan="2">Day total</td><td style="text-align:right">'+usd(vd.total)+'</td><td></td><td></td></tr>';
+    h+='</tbody></table></div>';
+  }else{
+    h+='<p class="note">No vendor entries this day.</p>';
+  }
+  h+='</div></div>';
+  var ed=U.vendEditEntry||null;
+  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>'+(ed?'Edit vendor entry':'Add a vendor')+'</h2><div class="rows">';
+  h+='<div class="f"><label for="vf-date">Date</label><div class="in txt"><input id="vf-date" type="date" value="'+(ed?ed.date:d)+'"></div></div>';
+  h+='<div class="f"><label for="vf-vendor">Vendor name</label><div class="in txt"><input id="vf-vendor" autocomplete="off" placeholder="e.g. Pepsi, Core-Mark" value="'+esc(ed?ed.vendor:'')+'"></div></div>';
+  h+='<div class="f"><label for="vf-type">Type</label><div class="in txt"><input id="vf-type" autocomplete="off" placeholder="Vendor" value="'+esc(ed?ed.type:'Vendor')+'"></div></div>';
+  h+='<div class="f"><label for="vf-debit">Debit</label><div class="in txt"><input id="vf-debit" inputmode="decimal" placeholder="0.00" value="'+(ed?ed.debit:'')+'"></div></div>';
+  h+='<div class="f"><label for="vf-credit">Credit</label><div class="in txt"><input id="vf-credit" inputmode="decimal" placeholder="0.00" value="'+(ed?ed.credit:'')+'"></div></div>';
+  h+='</div><div class="btnrow" style="margin-top:12px"><button type="button" class="btn" data-vend="save-entry">'+(ed?'Save changes':'Add vendor')+'</button>'+(ed?'<button type="button" class="btn" data-vend="cancel-entry">Cancel</button>':'')+'</div>';
+  h+='<p class="note">Vendors are the merchants you buy from. Enter each payment by hand \u2014 nothing here comes from pay-outs, the Z-Report or any sheet. Saved on this device only.</p>';
   h+='</div></div>';
   var ws=weekStartStr(d),we=addDaysStr(ws,6);
-  var list=[];for(var j=0;j<7;j++){for(var k=0;k<N_SHIFTS;k++)list.push({d:addDaysStr(ws,j),idx:k});}
-  var pe=payeeTotals(list);
-  var wtot=r2(sum(pe.map(function(p){return p.total;})));
-  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>This week — totals by vendor</h2><p class="note">Week of '+fmtDay(ws)+' – '+fmtDay(we)+'.</p>';
-  if(!pe.length)h+='<p class="note">No vendor payments this week.</p>';
+  var wk=vendWeekItems(ws);
+  var pe=vendorTotals(wk);
+  var wtot=r2(sum(pe.map(function(p){return p.debit;})));
+  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>This week \u2014 totals by vendor</h2><p class="note">Week of '+fmtDay(ws)+' \u2013 '+fmtDay(we)+'.</p>';
+  if(!pe.length)h+='<p class="note">No vendor entries this week.</p>';
   else{
     h+='<div class="tbl"><table><thead><tr><th>Vendor</th><th>Type</th><th style="text-align:right">Payments</th><th style="text-align:right">Total paid</th><th>Settled</th></tr></thead><tbody>';
-    pe.forEach(function(p){var who=p.who==='Unspecified'?(p.cat||'Unspecified'):p.who;h+='<tr><td>'+esc(who)+'</td><td>'+esc(p.cat)+'</td><td style="text-align:right">'+p.n+'</td><td style="text-align:right">'+usd(p.total)+'</td><td>'+settledPill(p.total,p.total)+'</td></tr>';});
+    pe.forEach(function(p){h+='<tr><td>'+esc(p.vendor)+'</td><td>'+esc(p.type)+'</td><td style="text-align:right">'+p.n+'</td><td style="text-align:right">'+usd(p.debit)+'</td><td>'+settledPill(p.debit,p.credit)+'</td></tr>';});
     h+='<tr class="key"><td>Week total</td><td></td><td></td><td style="text-align:right">'+usd(wtot)+'</td><td></td></tr>';
     h+='</tbody></table></div>';
   }
   h+='</div></div>';
-  var U=state.ui;
   h+='<div class="grid" style="margin-top:16px"><div class="card wide"><div class="cardhead"><h2>Rename a vendor</h2>'+(state.isOwner&&!U.vendEdit?'<button type="button" class="link" data-vend="edit">Edit names</button>':'')+'</div>';
   if(U.vendEdit){
-    if(!U.vendDraft.length)h+='<p class="note">No vendor names entered yet \u2014 add a payout with a name (description) on any shift first.</p>';
+    if(!U.vendDraft.length)h+='<p class="note">No vendor names entered yet \u2014 add a vendor entry above first.</p>';
     else{
       h+='<div class="rows">';
       U.vendDraft.forEach(function(e,i){
@@ -1105,12 +1121,11 @@ function renderVendors(){
       });
       h+='</div><div class="btnrow" style="margin-top:12px"><button type="button" class="btn" data-vend="save">Save names</button><button type="button" class="btn" data-vend="cancel">Cancel</button></div>';
     }
-    h+='<p class="note">Rename once and it changes everywhere \u2014 every day and every shift, past entries included. It saves on this device and goes to the sheets on the next Upload.</p>';
+    h+='<p class="note">Rename once and it changes everywhere \u2014 every day, past entries included. Saved on this device only.</p>';
   }else{
     h+='<p class="note">Fix a vendor name once and it stays fixed everywhere \u2014 no re-entering it each day.</p>';
   }
   h+='</div></div>';
-  h+='<p class="note" style="margin-top:16px">From the pay-outs entered on the Shift Sheet. Tap Upload to Sheets to send the same payments to the Google Sheets vendor list.</p>';
   $('#main').innerHTML=h;
 }
 
@@ -1133,7 +1148,7 @@ function updateLive(){
   var te=$('#tm'+N_SHIFTS);if(te){var ti=soInfo(dc.so,dc.has);te.className='tm '+ti.cls;te.textContent=dc.has?soText(dc.so):'—';}
   var t4=$('#tm'+(N_SHIFTS+1));if(t4){var r4=state.repTotals||{has:false,so:0};var i4=soInfo(r4.so||0,r4.has);t4.className='tm '+i4.cls;t4.textContent=r4.has?soText(r4.so):'—';}
   var t5=$('#tm'+(N_SHIFTS+2));if(t5){var r5=state.drepTotals||{has:false,sales:0};t5.className='tm';t5.textContent=r5.has?usd(r5.sales||0):'—';}
-  var t6=$('#tm'+(N_SHIFTS+3));if(t6){var v6=vendorDayItems(state.date);t6.className='tm';t6.textContent=v6.has?usd(v6.total):'—';}
+  var t6=$('#tm'+(N_SHIFTS+3));if(t6){var v6=vendDayItems(state.date);t6.className='tm';t6.textContent=v6.has?usd(v6.total):'—';}
   /* current shift fields */
   if(state.tab<N_SHIFTS){
     var o=dc.cs[state.tab];
@@ -1345,9 +1360,37 @@ main.addEventListener('click',function(e){
   if(k==='edit'){if(!state.isOwner)return;U.vendEdit=true;U.vendDraft=allVendorNames().map(function(n){return {old:n,cur:n};});renderVendors();updateLive();return;}
   if(k==='cancel'){U.vendEdit=false;U.vendDraft=[];renderVendors();updateLive();return;}
   if(k==='save'){
-    var n=applyVendorRenames();
+    var changed=0;
+    U.vendDraft.forEach(function(en){changed+=vendRename(en.old,en.cur);});
     U.vendEdit=false;U.vendDraft=[];
-    setStatus('ok',n?('Vendor name changed on '+n+' day'+(n>1?'s':'')+' \u2014 saved on this device; upload to send it to the sheets.'):'No names changed.');
+    setStatus('ok',changed?('Vendor name changed on '+changed+' entr'+(changed>1?'ies':'y')+' \u2014 saved on this device.'):'No names changed.');
+    renderVendors();updateLive();return;
+  }
+  if(k==='save-entry'){
+    var dv=(document.getElementById('vf-date')||{}).value||state.date;
+    var nv=(document.getElementById('vf-vendor')||{}).value||'';
+    var ty=(document.getElementById('vf-type')||{}).value||'Vendor';
+    var db=(document.getElementById('vf-debit')||{}).value||'0';
+    var cr=(document.getElementById('vf-credit')||{}).value||'0';
+    if(!String(nv).trim()){setStatus('warn','Enter a vendor name first.');return;}
+    if(!validDate(dv)){setStatus('warn','Pick a valid date.');return;}
+    if(U.vendEditEntry){vendUpdate(U.vendEditEntry.id,{date:dv,vendor:nv,type:ty,debit:db,credit:cr});U.vendEditEntry=null;setStatus('ok','Vendor entry updated \u2014 saved on this device.');}
+    else if(vendAdd({date:dv,vendor:nv,type:ty,debit:db,credit:cr})){setStatus('ok','Vendor added \u2014 saved on this device.');}
+    else{setStatus('warn','Could not add that vendor \u2014 check the date and name.');return;}
+    renderVendors();updateLive();return;
+  }
+  if(k==='cancel-entry'){U.vendEditEntry=null;renderVendors();updateLive();return;}
+  if(k==='edit-entry'){
+    var id=b.dataset.vid,found=null;
+    vendList.forEach(function(v){if(v.id===id)found=v;});
+    if(!found)return;
+    U.vendEditEntry={id:found.id,date:found.date,vendor:found.vendor,type:found.type,debit:found.debit,credit:found.credit};
+    renderVendors();updateLive();return;
+  }
+  if(k==='del'){
+    var id2=b.dataset.vid;
+    if(U.vendEditEntry&&U.vendEditEntry.id===id2)U.vendEditEntry=null;
+    if(vendDelete(id2))setStatus('ok','Vendor entry deleted.');
     renderVendors();updateLive();return;
   }
 });
@@ -1431,6 +1474,7 @@ function startDb(db){
 }
 function boot(){
   state.date=todayStr();ensureDay(state.date);
+  vendLoad();
   var h=location.hash||'';
   if(h==='#reports')state.tab=N_SHIFTS+1;
   else if(h==='#daily-reports')state.tab=N_SHIFTS+2;
