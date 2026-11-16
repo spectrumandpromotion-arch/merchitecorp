@@ -113,6 +113,11 @@ main{padding-top:16px}
 .tot{display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px solid var(--line);font-weight:600}
 .tot b,.ln b,.mono{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
 .coins{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.co input{width:96px;min-width:0;border:1px solid var(--line);border-radius:5px;background:var(--surface-2);color:inherit;padding:7px 8px;font:500 13.5px var(--mono);text-align:right}
+.co textarea{width:100%;min-width:0;border:1px solid var(--line);border-radius:5px;background:var(--surface-2);color:inherit;padding:8px;font:500 13.5px var(--sans);min-height:56px;resize:vertical}
+.co td.amt{font-weight:600}
+.costeps{font-size:12.5px;color:var(--muted);margin:2px 0 12px}
+.costeps b{color:inherit}
 @media (max-width:460px){.coins{grid-template-columns:repeat(2,minmax(0,1fr))}.two.keep{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .coin .in input{padding:9px 8px}
 .sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:8px 32px}
@@ -225,6 +230,18 @@ td.dayc{font-weight:700;background:var(--accent-soft)}
 (function(){
 'use strict';
 var N_SHIFTS=3, LOTTERY_SHIFT=2;
+/* Cash Out tab: bill and coin denominations for the closing count.
+   Bills in dollars, coins in cents — the $1 coin is in the list. */
+var CO_BILLS=[100,50,20,10,5,2,1],CO_COINS=[100,50,25,10,5,1];
+function coCounts(s){
+  var co=s&&s.cashout?s.cashout:{b:{},c:{}};
+  var b={},c={},has=false,bt=0,ct=0;
+  CO_BILLS.forEach(function(v){var k=String(v),raw=co.b?co.b[k]:'';var n=num(raw);b[v]=n;if(String(raw==null?'':raw).trim()!=='')has=true;bt+=n*v;});
+  CO_COINS.forEach(function(v){var k=String(v),raw=co.c?co.c[k]:'';var n=num(raw);c[v]=n;if(String(raw==null?'':raw).trim()!=='')has=true;ct+=n*v;});
+  return {b:b,c:c,has:has,bTotal:r2(bt),cTotal:r2(ct/100)};
+}
+function coStep(i){return (state.ui.coStep&&state.ui.coStep[i])||1;}
+function coSetStep(i,n){if(!state.ui.coStep)state.ui.coStep={};state.ui.coStep[i]=n;}
 var GAS=[['g87','87'],['g89','89'],['g93','93']];
 var DEFAULT_TYPES=['Lottery','Western Union','Vendor','Other'];
 var LS_SET='gas-shift-sheet-settings-v1';
@@ -245,6 +262,7 @@ function validDate(s){return /^\d{4}-\d{2}-\d{2}$/.test(s)&&!isNaN(toDate(s).get
 /* ---------- data model ---------- */
 function blankShift(){
   return {name:'',drops:[{t:'',n:'',a:''}],bills:'',coins:{q:'',d:'',n:'',p:''},
+    cashout:{b:{'100':'','50':'','20':'','10':'','5':'','2':'','1':''},c:{'100':'','50':'','25':'','10':'','5':'','1':''},by:'',comment:'',confirmedBy:'',confirmedAt:''},
     credit:'',debit:'',ebt:'',coupons:'',fees:'',
     payouts:[{cat:state.settings.types[0]||'',desc:'',amt:''}],
     fuel:'',merch:'',tax:'',
@@ -273,10 +291,18 @@ function normDay(d){
 function calc(s,idx){
   var o={},T0=state.settings.types[0]||'';
   o.dropsT=r2(sum(s.drops.map(function(d){return num(d.a);})));
-  o.bills=num(s.bills);
-  var q=num(s.coins.q),d=num(s.coins.d),n=num(s.coins.n),p=num(s.coins.p);
-  o.cq=r2(q*.25);o.cd=r2(d*.10);o.cn=r2(n*.05);o.cp=r2(p*.01);
-  o.coins=(q*25+d*10+n*5+p)/100;
+  /* Drawer cash: the Cash Out tab count wins when any count was entered;
+     otherwise fall back to the old bills amount + coin counts, so shifts
+     entered before the Cash Out tab keep their totals. */
+  var co=coCounts(s);
+  o.coHas=co.has;o.coBills=co.bTotal;o.coCoins=co.cTotal;o.coB=co.b;o.coC=co.c;
+  if(co.has){o.bills=co.bTotal;o.coins=co.cTotal;}
+  else{
+    o.bills=num(s.bills);
+    var q=num(s.coins.q),d=num(s.coins.d),n=num(s.coins.n),p=num(s.coins.p);
+    o.coins=(q*25+d*10+n*5+p)/100;
+  }
+  o.drawer=r2(o.bills+o.coins);
   o.cash=r2(o.dropsT+o.bills+o.coins);
   o.credit=num(s.credit);o.debit=num(s.debit);o.ebt=num(s.ebt);o.coupons=num(s.coupons);o.fees=num(s.fees);
   o.cards=r2(o.credit+o.debit);o.cardsNet=r2(o.cards-o.fees);
@@ -343,7 +369,8 @@ function syncShift(date, idx){
       fuelSales: c.fuel, merchSales: c.merch, tax: c.tax, lotterySales: c.lotSales, lotteryCash: c.lotC,
       totalSales: c.sales, collected: c.collected, shortOver: c.so,
       gas87gal: c.g87g, gas89gal: c.g89g, gas93gal: c.g93g, gasSales: c.gasAmt,
-      gasProfit: c.gasProfit, gas87profit: c.g87p, gas89profit: c.g89p, gas93profit: c.g93p
+      gasProfit: c.gasProfit, gas87profit: c.g87p, gas89profit: c.g89p, gas93profit: c.g93p,
+      cashout: c.coHas?{bills:c.coB,coins:c.coC,billsTotal:c.coBills,coinsTotal:c.coCoins,drawerTotal:c.drawer,by:String(sh.cashout.by||''),comment:String(sh.cashout.comment||''),confirmedBy:String(sh.cashout.confirmedBy||''),confirmedAt:String(sh.cashout.confirmedAt||''),has:true}:null
     };
     return fetch(SYNC_URL, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(payload)})
       .then(function(){ return true; }).catch(function(){ return false; });
@@ -498,12 +525,8 @@ function renderShift(){
   });
   h+='<button type="button" class="add" data-act="add" data-l="drops">+ Add drop</button></div>';
   h+='<div class="tot"><span>Total drops</span><b data-o="dropsT"></b></div>';
-  h+=money('Cash in drawer (bills)','bills');
-  h+='<div><span class="lbl">Coins (how many of each)</span><div class="coins" style="margin-top:6px">';
-  [['q','25¢','cq'],['d','10¢','cd'],['n','5¢','cn'],['p','1¢','cp']].forEach(function(c){
-    h+='<div class="coin f"><label for="'+pid('coins.'+c[0])+'">'+c[1]+'</label><div class="in"><input id="'+pid('coins.'+c[0])+'" data-p="coins.'+c[0]+'" inputmode="numeric" autocomplete="off" placeholder="0" value="'+esc(s.coins[c[0]])+'"></div><div class="sub" data-o="'+c[2]+'"></div></div>';
-  });
-  h+='</div></div>';
+  h+='<div class="tot"><span>Cash in drawer (counted on Cash Out tab)</span><b data-o="drawer"></b></div>';
+  h+='<p class="note">Count the drawer on the <button type="button" class="link" data-act="goto-cashout">Cash Out tab</button> — $100, $50, $20, $10, $5, $2 and $1 bills, and $1, 50¢, 25¢, 10¢, 5¢ and 1¢ coins. The total shows here, and the breakdown lives only there.</p>';
   h+='<div class="tot"><span>Total cash</span><b data-o="cash"></b></div><p class="note">Money fields take a minus: tap \u2212 next to an amount for no cash, a payout, no deposit, or a short. On Shift 3 a negative lottery Cash shows as Short.</p></div></section>';
 
   h+='<section class="card"><h2>Cards and other tender</h2><div class="stack"><div class="two keep">'+money('Credit','credit')+money('Debit','debit')+money('EBT','ebt')+money('Coupons','coupons')+'</div>'+
@@ -1132,6 +1155,109 @@ function renderVendors(){
   $('#main').innerHTML=h;
 }
 
+/* ---------- cash out tab (closing count, step by step) ---------- */
+/* Two screens inside this tab: (1) count bills + coins side by side,
+   (2) comment (Counted by + comment) and Confirm together. */
+function coDay(d){
+  var dc=dayCalc(d),out=[];
+  for(var i=0;i<N_SHIFTS;i++){
+    var s=state.days[d].shifts[i],c=dc.cs[i],co=coCounts(s);
+    var legacy=num(s.bills)!==0||num(s.coins.q)||num(s.coins.d)||num(s.coins.n)||num(s.coins.p);
+    out.push({i:i,s:s,c:c,co:co,legacy:legacy,counted:co.has||legacy,
+      drawer:c.drawer,drops:c.dropsT,cash:c.cash,payT:c.payT,
+      exp:r2(c.cash-c.payT-300),so:c.so,has:c.has});
+  }
+  return out;
+}
+function coLn(label,key,txt,isKey){return '<div class="ln'+(isKey?' t':'')+'"><span>'+label+'</span><b data-co-o="'+key+'">'+txt+'</b></div>';}
+function coCountTable(t,kind){
+  var list=kind==='b'?CO_BILLS:CO_COINS,rows='';
+  list.forEach(function(v){
+    var val=t.s.cashout[kind][String(v)];
+    var amt=kind==='b'?t.co.b[v]*v:t.co.c[v]*v/100;
+    var lbl=kind==='b'?('$'+v+' bill'):(v>=100?'$1 coin':v+'¢ coin');
+    rows+='<tr><td>'+lbl+'</td>'+
+      '<td><input data-co="'+kind+'.'+v+'" data-i="'+t.i+'" inputmode="numeric" autocomplete="off" placeholder="0" value="'+esc(val)+'"></td>'+
+      '<td class="amt" data-co-o="'+kind+v+'-'+t.i+'">'+usd(amt)+'</td></tr>';
+  });
+  return rows;
+}
+function coStepCard(t){
+  var step=coStep(t.i),h='';
+  h+='<p class="costeps">Step <b>'+step+' of 2</b> — '+(step===1?'Count bills &amp; coins':'Comment &amp; Confirm')+'</p>';
+  if(step===1){
+    h+='<div class="grid"><div><h3>Bills</h3><div class="tbl"><table class="co"><thead><tr><th>Denomination</th><th style="text-align:right">Count</th><th style="text-align:right">Amount</th></tr></thead><tbody>'+coCountTable(t,'b')+
+      '<tr class="key"><td>Bills subtotal</td><td></td><td class="amt" data-co-o="bt'+t.i+'">'+usd(t.co.bTotal)+'</td></tr></tbody></table></div></div>'+
+      '<div><h3>Coins</h3><div class="tbl"><table class="co"><thead><tr><th>Denomination</th><th style="text-align:right">Count</th><th style="text-align:right">Amount</th></tr></thead><tbody>'+coCountTable(t,'c')+
+      '<tr class="key"><td>Coins subtotal</td><td></td><td class="amt" data-co-o="ct'+t.i+'">'+usd(t.co.cTotal)+'</td></tr></tbody></table></div></div></div>';
+    h+='<div class="btnrow" style="margin-top:12px"><span style="flex:1"></span><button type="button" class="btn primary" data-co="step" data-i="'+t.i+'" data-to="2">Next: Comment &amp; Confirm ›</button></div>';
+  }else{
+    var confirmed=!!(t.s.cashout.confirmedAt||'');
+    var expTxt=(t.counted||t.has)?usd(t.exp):'—';
+    h+='<div class="sum">'+
+      '<div>'+coLn('Bills subtotal','bt'+t.i,usd(t.co.bTotal))+coLn('Coins subtotal','ct'+t.i,usd(t.co.cTotal))+coLn('Cash in drawer','dr'+t.i,usd(t.drawer),true)+coLn('Safe drops','dp'+t.i,usd(t.drops))+coLn('Total cash counted','tc'+t.i,usd(t.cash),true)+'</div>'+
+      '<div>'+coLn('Less float ($150 × 2 drawers)','fl'+t.i,usd(-300))+coLn('Less pay outs','pt'+t.i,usd(-t.payT))+coLn('Expected deposit to safe','ed'+t.i,expTxt,true)+'</div></div>';
+    var inf=soInfo(t.so,t.has);
+    h+='<div class="result"><span class="rl">Short / Over</span><b class="big '+inf.cls+'" data-co-o="so'+t.i+'">'+(t.has?soText(t.so):'—')+'</b><span class="pill '+inf.cls+'" data-co-pill="'+t.i+'">'+inf.word+'</span></div>';
+    h+='<div style="margin-top:14px"><div class="f"><label for="cob-'+t.i+'">Counted by (name)</label><div class="in txt"><input id="cob-'+t.i+'" data-cob="by" data-i="'+t.i+'" autocomplete="off" placeholder="Who counted this cash?" value="'+esc(t.s.cashout.by||'')+'"></div></div>'+
+      '<div class="f" style="margin-top:10px"><label for="coc-'+t.i+'">Comment</label><textarea id="coc-'+t.i+'" data-cob="comment" data-i="'+t.i+'" autocomplete="off" placeholder="Anything to note about this count?">'+esc(t.s.cashout.comment||'')+'</textarea></div></div>';
+    if(confirmed){
+      var when=new Date(t.s.cashout.confirmedAt);
+      var whenTxt=isNaN(when.getTime())?t.s.cashout.confirmedAt:when.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+      h+='<p class="note" style="color:var(--ok);font-weight:600">✓ Confirmed'+(t.s.cashout.confirmedBy?' by '+esc(t.s.cashout.confirmedBy):'')+' · '+esc(whenTxt)+'.</p>'+
+        '<div class="btnrow" style="margin-top:8px"><button type="button" class="btn" data-co="step" data-i="'+t.i+'" data-to="1">‹ Back: Count</button><span style="flex:1"></span><button type="button" class="btn" data-co="unconfirm" data-i="'+t.i+'">Change count</button></div>'+
+        '<p class="note">Changing any count, the name or the comment clears this confirmation — confirm again when the count is final. Tap Upload to Sheets to send it to the reports.</p>';
+    }else{
+      h+='<div class="btnrow" style="margin-top:12px"><button type="button" class="btn" data-co="step" data-i="'+t.i+'" data-to="1">‹ Back: Count</button><span style="flex:1"></span><button type="button" class="btn primary" data-co="confirm" data-i="'+t.i+'"'+(t.co.has?'':' disabled')+'>Confirm Shift '+(t.i+1)+' cash-out</button></div>';
+      if(!t.co.has)h+='<p class="note">Count the bills and coins first — the Confirm button turns on once a count is entered.</p>';
+      else if(t.legacy)h+='<p class="note">This shift still has an old bills + coins total. The count above replaces it.</p>';
+    }
+  }
+  return h;
+}
+function renderCashOut(){
+  var d=state.date,T=coDay(d);
+  var h='<div class="card"><h2>Cash Out — '+fmtDayLong(d)+'</h2>'+
+    '<div class="btnrow"><button type="button" class="btn" data-co="prev-day">‹ Prev day</button><button type="button" class="btn" data-co="today">Today</button><button type="button" class="btn" data-co="next-day">Next day ›</button></div>'+
+    '<p class="note">Count the cash in the drawer at the end of each shift, one step at a time. Safe drops stay on the shift tabs. Counts save on this device; tap Upload to Sheets to send them to the reports.</p>'+
+    repUploadLine(d)+'</div>';
+  T.forEach(function(t){
+    h+='<div class="card"><div class="cardhead"><h2>Shift '+(t.i+1)+(t.s.name?' · '+esc(t.s.name):'')+'</h2><button type="button" class="link" data-co="goto-shift" data-i="'+t.i+'">Open Shift '+(t.i+1)+'</button></div>';
+    h+=coStepCard(t);
+    h+='</div>';
+  });
+  var dt={bT:0,cT:0,dr:0,dp:0,tc:0,pt:0,ed:0,so:0,has:false};
+  T.forEach(function(t){dt.bT=r2(dt.bT+t.co.bTotal);dt.cT=r2(dt.cT+t.co.cTotal);dt.dr=r2(dt.dr+t.drawer);dt.dp=r2(dt.dp+t.drops);dt.tc=r2(dt.tc+t.cash);dt.pt=r2(dt.pt+t.payT);dt.ed=r2(dt.ed+t.exp);dt.so=r2(dt.so+t.so);if(t.has)dt.has=true;});
+  var dinf=soInfo(dt.so,dt.has);
+  h+='<div class="card"><h2>Day total</h2><div class="sum">'+
+    '<div>'+coLn('Bills','dbt',usd(dt.bT))+coLn('Coins','dct',usd(dt.cT))+coLn('Cash in drawer','ddr',usd(dt.dr),true)+coLn('Safe drops','ddp',usd(dt.dp))+coLn('Total cash counted','dtc',usd(dt.tc),true)+'</div>'+
+    '<div>'+coLn('Less float ($300 × 3 shifts)','dfl',usd(-900))+coLn('Less pay outs','dpt',usd(-dt.pt))+coLn('Expected deposit to safe','ded',dt.has?usd(dt.ed):'—',true)+'</div></div>'+
+    '<div class="result"><span class="rl">Short / Over</span><b class="big '+dinf.cls+'" data-co-o="dso">'+(dt.has?soText(dt.so):'—')+'</b><span class="pill '+dinf.cls+'" data-co-pill="d">'+dinf.word+'</span></div>'+
+    '<p class="note">Expected deposit is the three shifts added together — each shift keeps its own $300 float, so $900 comes off the day total.</p></div>';
+  $('#main').innerHTML=h;
+}
+function coTotals(){
+  var d=state.date,T=coDay(d);
+  T.forEach(function(t){
+    CO_BILLS.forEach(function(v){var el=document.querySelector('[data-co-o="b'+v+'-'+t.i+'"]');if(el)el.textContent=usd(t.co.b[v]*v);});
+    CO_COINS.forEach(function(v){var el=document.querySelector('[data-co-o="c'+v+'-'+t.i+'"]');if(el)el.textContent=usd(t.co.c[v]*v/100);});
+    var m={};
+    m['bt'+t.i]=usd(t.co.bTotal);m['ct'+t.i]=usd(t.co.cTotal);m['dr'+t.i]=usd(t.drawer);m['dp'+t.i]=usd(t.drops);m['tc'+t.i]=usd(t.cash);m['pt'+t.i]=usd(-t.payT);m['ed'+t.i]=(t.counted||t.has)?usd(t.exp):'—';m['so'+t.i]=t.has?soText(t.so):'—';
+    Object.keys(m).forEach(function(k){var el=document.querySelector('[data-co-o="'+k+'"]');if(el)el.textContent=m[k];});
+    var inf=soInfo(t.so,t.has),pl=document.querySelector('[data-co-pill="'+t.i+'"]');
+    if(pl){pl.className='pill '+inf.cls;pl.textContent=inf.word;}
+    var sob=document.querySelector('[data-co-o="so'+t.i+'"]');if(sob)sob.className='big '+inf.cls;
+  });
+  var dt={bT:0,cT:0,dr:0,dp:0,tc:0,pt:0,ed:0,so:0,has:false};
+  T.forEach(function(t){dt.bT=r2(dt.bT+t.co.bTotal);dt.cT=r2(dt.cT+t.co.cTotal);dt.dr=r2(dt.dr+t.drawer);dt.dp=r2(dt.dp+t.drops);dt.tc=r2(dt.tc+t.cash);dt.pt=r2(dt.pt+t.payT);dt.ed=r2(dt.ed+t.exp);dt.so=r2(dt.so+t.so);if(t.has)dt.has=true;});
+  var dm={'dbt':usd(dt.bT),'dct':usd(dt.cT),'ddr':usd(dt.dr),'ddp':usd(dt.dp),'dtc':usd(dt.tc),'dpt':usd(-dt.pt),'ded':dt.has?usd(dt.ed):'—','dso':dt.has?soText(dt.so):'—'};
+  Object.keys(dm).forEach(function(k){var el=document.querySelector('[data-co-o="'+k+'"]');if(el)el.textContent=dm[k];});
+  var dinf=soInfo(dt.so,dt.has),dpl=document.querySelector('[data-co-pill="d"]');
+  if(dpl){dpl.className='pill '+dinf.cls;dpl.textContent=dinf.word;}
+  var dsob=document.querySelector('[data-co-o="dso"]');if(dsob)dsob.className='big '+dinf.cls;
+}
+function coClearConfirm(sh){if(sh&&sh.cashout&&(sh.cashout.confirmedBy||sh.cashout.confirmedAt)){sh.cashout.confirmedBy='';sh.cashout.confirmedAt='';}}
+
 /* ---------- settlement tab (daily cash / bank settlement — manual, on this device only) ---------- */
 var STL_LS='gas-settlement-v1';
 var STL_PAY_TYPES=['Cash','Card','Bank transfer','Other'];
@@ -1291,8 +1417,8 @@ function renderSettlement(){
 
 function renderTabs(){
   var h='';
-  for(var i=0;i<=N_SHIFTS+4;i++){
-    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':(i===N_SHIFTS+2?'Daily Reports':(i===N_SHIFTS+3?'Vendors':'Settlement')))))+'</span><span class="tm" id="tm'+i+'"></span></button>';
+  for(var i=0;i<=N_SHIFTS+5;i++){
+    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':(i===N_SHIFTS+2?'Daily Reports':(i===N_SHIFTS+3?'Vendors':(i===N_SHIFTS+4?'Settlement':'Cash Out'))))))+'</span><span class="tm" id="tm'+i+'"></span></button>';
   }
   $('#tabs').innerHTML=h;
 }
@@ -1310,6 +1436,7 @@ function updateLive(){
   var t5=$('#tm'+(N_SHIFTS+2));if(t5){var r5=state.drepTotals||{has:false,sales:0};t5.className='tm';t5.textContent=r5.has?usd(r5.sales||0):'—';}
   var t6=$('#tm'+(N_SHIFTS+3));if(t6){var v6=vendDayItems(state.date);t6.className='tm';t6.textContent=v6.has?usd(v6.total):'—';}
   var t7=$('#tm'+(N_SHIFTS+4));if(t7){var s7=stlShiftTotals(state.stl.date||state.date);t7.className='tm';t7.textContent=s7.tot.has?usd(s7.tot.expDep):'—';}
+  var t8=$('#tm'+(N_SHIFTS+5));if(t8){var c8=0;dc.cs.forEach(function(c){if(c.has)c8=r2(c8+c.cash);});t8.className='tm';t8.textContent=dc.has?usd(c8):'—';}
   /* current shift fields */
   if(state.tab<N_SHIFTS){
     var o=dc.cs[state.tab];
@@ -1325,7 +1452,7 @@ function updateLive(){
   else if(state.tab===N_SHIFTS+2){var rd=state.drepTotals||{so:0,has:false,collected:0,sales:0};c2={so:rd.so,has:rd.has,collected:rd.collected,sales:rd.sales};}
   else c2=isDay?{so:dc.so,has:dc.has,collected:dc.collected,sales:dc.sales}:dc.cs[state.tab];
   var bi=soInfo(c2.so,c2.has);
-  $('#barTitle').textContent=state.tab===N_SHIFTS+4?'Settlement':(state.tab===N_SHIFTS+3?'Vendors':(state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1)))));
+  $('#barTitle').textContent=state.tab===N_SHIFTS+5?'Cash Out':(state.tab===N_SHIFTS+4?'Settlement':(state.tab===N_SHIFTS+3?'Vendors':(state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1))))));
   $('#barSub').textContent='Collected '+usd(c2.collected)+'  ·  Sales '+usd(c2.sales);
   var bn=$('#barNum');bn.className='bn '+bi.cls;bn.textContent=c2.has?soText(c2.so):'—';
   var bp=$('#barPill');bp.className='pill '+bi.cls;bp.textContent=bi.word;
@@ -1355,7 +1482,7 @@ function renderDates(){
 }
 function renderAll(){
   renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else if(state.tab===N_SHIFTS+3)renderVendors();else renderSettlement();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else if(state.tab===N_SHIFTS+3)renderVendors();else if(state.tab===N_SHIFTS+4)renderSettlement();else renderCashOut();
   renderDates();updateLive();
   armed=false;var dd=$('#delDay');dd.textContent='Delete this day';dd.classList.remove('armed');
 }
@@ -1372,6 +1499,47 @@ function openDate(d,explicit){
 
 /* ---------- events ---------- */
 var main=$('#main');
+main.addEventListener('input',function(e){
+  var t=e.target,ds=t.dataset||{};
+  if(state.tab!==N_SHIFTS+5)return;
+  if(ds.co!==undefined){
+    var sh=state.days[state.date].shifts[Number(ds.i)];
+    if(!sh)return;
+    setP(sh,'cashout.'+ds.co,t.value);
+    coClearConfirm(sh);
+    markDirty();coTotals();updateLive();return;
+  }
+  if(ds.cob!==undefined){
+    var sh2=state.days[state.date].shifts[Number(ds.i)];
+    if(!sh2)return;
+    setP(sh2,'cashout.'+ds.cob,t.value);
+    coClearConfirm(sh2);
+    markDirty();updateLive();return;
+  }
+});
+main.addEventListener('click',function(e){
+  var b=e.target.closest('button[data-co]');if(!b||state.tab!==N_SHIFTS+5)return;
+  var k=b.dataset.co,i=Number(b.dataset.i||0);
+  if(k==='prev-day'){state.date=addDaysStr(state.date,-1);ensureDay(state.date);renderCashOut();renderDates();updateLive();return;}
+  if(k==='next-day'){state.date=addDaysStr(state.date,1);ensureDay(state.date);renderCashOut();renderDates();updateLive();return;}
+  if(k==='today'){state.date=todayStr();ensureDay(state.date);renderCashOut();renderDates();updateLive();return;}
+  if(k==='goto-shift'){state.tab=i;renderTabs();renderShift();updateLive();window.scrollTo({top:0});return;}
+  if(k==='step'){coSetStep(i,Number(b.dataset.to||1));renderCashOut();updateLive();return;}
+  if(k==='confirm'){
+    var sh=state.days[state.date].shifts[i],co=coCounts(sh);
+    if(!co.has){setStatus('warn','Count the bills and coins first.');return;}
+    var by=String(sh.cashout.by||'').trim();
+    sh.cashout.confirmedBy=by;sh.cashout.confirmedAt=new Date().toISOString();
+    markDirty();renderCashOut();updateLive();
+    setStatus('ok','Shift '+(i+1)+' cash-out confirmed'+(by?' by '+by:'')+' — tap Upload to Sheets to send it to the reports.');
+    return;
+  }
+  if(k==='unconfirm'){
+    var sh2=state.days[state.date].shifts[i];
+    sh2.cashout.confirmedBy='';sh2.cashout.confirmedAt='';
+    markDirty();renderCashOut();updateLive();return;
+  }
+});
 main.addEventListener('input',function(e){
   var t=e.target,ds=t.dataset||{};
   if(ds.gp){state.ui.gasDraft[ds.gp]=t.value;return;}
@@ -1396,6 +1564,9 @@ main.addEventListener('click',function(e){
   }
   var b=e.target.closest('[data-act]');if(!b||state.tab>=N_SHIFTS)return;
   var a=b.dataset.act,S=state.settings,U=state.ui;
+  if(a==='goto-cashout'){
+    state.tab=N_SHIFTS+5;renderTabs();renderCashOut();updateLive();window.scrollTo({top:0});return;
+  }
   if(a==='reset'){
     if(!resetArmed){
       resetArmed=true;b.textContent='Tap again to clear Shift '+(state.tab+1);b.classList.add('armed');
@@ -1454,7 +1625,7 @@ main.addEventListener('click',function(e){
 $('#tabs').addEventListener('click',function(e){
   var b=e.target.closest('[data-tab]');if(!b)return;
   state.tab=Number(b.dataset.tab);renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else if(state.tab===N_SHIFTS+3)renderVendors();else renderSettlement();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else if(state.tab===N_SHIFTS+3)renderVendors();else if(state.tab===N_SHIFTS+4)renderSettlement();else renderCashOut();
   if(state.tab===N_SHIFTS+2)drepLoad(false);
   updateLive();
   window.scrollTo({top:0});
@@ -1672,6 +1843,7 @@ function refreshView(){
   if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();return;}
   if(state.tab===N_SHIFTS+3){renderVendors();updateLive();return;}
   if(state.tab===N_SHIFTS+4){renderSettlement();updateLive();return;}
+  if(state.tab===N_SHIFTS+5){renderCashOut();updateLive();return;}
   if(typing())updateLive();else{renderShift();updateLive();}
 }
 function startLocal(){
@@ -1725,6 +1897,7 @@ function boot(){
   else if(h==='#daily-reports')state.tab=N_SHIFTS+2;
   else if(h==='#vendors')state.tab=N_SHIFTS+3;
   else if(h==='#settlement')state.tab=N_SHIFTS+4;
+  else if(h==='#cash-out')state.tab=N_SHIFTS+5;
   renderAll();
   if(state.tab===N_SHIFTS+2)drepLoad(false);
   setStatus('','Loading…');
