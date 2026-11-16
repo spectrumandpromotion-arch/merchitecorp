@@ -224,14 +224,41 @@
   ];
   var P={mode:'shift',shift:0,date:todayStr()};
   var profTotals={has:false,profit:0,sales:0};
-  var profEdit=false, profDraft={}, profPricesOpen=false;
+  var profEdit=false, profDraft={};
   var feed=null, feedLoaded=false, feedLoading=false, feedError='', feedUpdated='';
   function profRead(){try{var m=JSON.parse(localStorage.getItem(PROF_LS)||'{}');return m&&typeof m==='object'?m:{};}catch(e){return {};}}
   function profWrite(m){try{localStorage.setItem(PROF_LS,JSON.stringify(m));}catch(e){}}
   function readSettings(){try{var o=JSON.parse(localStorage.getItem(LS_SET)||'null');return o&&typeof o==='object'?o:{};}catch(e){return {};}}
   function readPrices(){var o=readSettings();return (o.profit&&typeof o.profit==='object')?o.profit:{};}
   function savePrices(np){var o=readSettings();o.profit=np;try{localStorage.setItem(LS_SET,JSON.stringify(o));}catch(e){}}
-  function profPrice(cat){var p=readPrices()[cat]||{};var buy=num(p.buy),sell=0,pct=null;if(p.sellPct!=null){pct=num(p.sellPct);if(pct>0&&pct<100&&buy>0)sell=r2(buy/(1-pct/100));}else sell=num(p.sell);return {buy:buy,sell:sell,sellPct:pct,updated:p.updated||''};}
+  /* Owner's category margins (Nov 15, 2026 — given by the owner, apply
+     forever). Margin % is markup on the buy price: buy = sell / (1+margin).
+     Phone Cards 100%, Juice 40%, Wine 40%, Snacks & Chips 40%, Beer 35%,
+     Misc. No Tax 100%, CC Fee 100%, Coffee 0% (sold at cost). Categories
+     not listed here have no margin yet — never invent one. */
+  var USER_MARGINS={beer:35,juice:40,wine:40,snack:40,phonecard:100,misc:100,ccfee:100,coffee:0};
+  /* Default sell price per category from the Oct 13-Nov 12 month catalogue
+     (month amount / month qty, blended). Phone Cards, Misc. No Tax, Cigars
+     and CC Fee have no SKUs in the catalogue, so no default — set them. */
+  var CAT_SELL_DEFAULT={beer:3.45,cigarettes:8.45,juice:2.27,snack:2.49,tobacco:2.14,water:2.16,energy:3.46,wine:3.57,soda:1.59,smokeless:1.68,dairy:3.72,candy:2.17,grocery:2.98,txgroc:3.12,frozen:3.31,coffee:4.95};
+  /* Price-list rows: the 19 Z-Report categories plus CC Fee. CC Fee has no
+     shift quantities in the feed, so it never appears in the Shift / Day /
+     Week profit rows — but the owner gave it a 100% margin, so it belongs
+     on the price list. */
+  var PRICE_CATS=PROF_CATS.concat([['ccfee','CC Fee']]);
+  function profPrice(cat){
+    var p=readPrices()[cat]||{};
+    var buyManual=num(p.buy),sell=0,pct=null,margin=null,edited=false;
+    if(p.sellPct!=null)pct=num(p.sellPct);
+    if(p.marginPct!=null)margin=num(p.marginPct);
+    else if(USER_MARGINS[cat]!=null)margin=USER_MARGINS[cat];
+    if(pct!=null&&pct>0&&pct<100&&buyManual>0){sell=r2(buyManual/(1-pct/100));edited=true;}
+    else if(num(p.sell)>0){sell=num(p.sell);edited=true;}
+    if(sell<=0)sell=CAT_SELL_DEFAULT[cat]||0;
+    var buy=buyManual;
+    if(margin!=null&&sell>0)buy=r2(sell/(1+margin/100));
+    return {buy:buy,sell:sell,sellPct:pct,marginPct:margin,edited:edited,updated:p.updated||''};
+  }
   function profHasPrice(cat){var pr=profPrice(cat);return pr.buy>0&&pr.sell>0;}
   function profMargin(cat){var pr=profPrice(cat);if(pr.sell<=0)return 0;return (pr.sell-pr.buy)/pr.sell;}
   function profSheetQty(d,idx){
@@ -291,7 +318,12 @@
     PROF_CATS.forEach(function(c){
       var q=num(qty[c[0]]),pr=profPrice(c[0]),sell=pr.sell,auto=false,sales=0;
       var mq=num(manual[c[0]]);
-      if(amt&&q>0&&!(mq>0&&mq!==num(sheetQ[c[0]]))){
+      // Edit prices come first: a sell price set in the price list wins
+      // over the Z-Report auto price. Otherwise the auto price (amount/qty)
+      // is the realised sell for this shift; without feed data the
+      // price-list sell (catalogue default) applies.
+      if(pr.edited&&pr.sell>0){sales=r2(q*sell);}
+      else if(amt&&q>0&&!(mq>0&&mq!==num(sheetQ[c[0]]))){
         sell=amt[c[0]]/q;auto=true;sales=r2(amt[c[0]]);
       }else sales=r2(q*sell);
       rows.push({cat:c[0],name:c[1],qty:q,buy:pr.buy,sell:sell,sales:sales,profit:r2(sales-q*pr.buy),auto:auto});
@@ -372,29 +404,31 @@
   }
   function profPricesCard(){
     var h='';
-    var setCount=0;
-    PROF_CATS.forEach(function(c){if(profHasPrice(c[0]))setCount++;});
-    h+='<div class="card"><h2>Buy &amp; sell prices — set once, stays until you change it</h2>';
-    h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" data-prof="prices-toggle">'+(profPricesOpen?'Hide prices':'Show prices')+'</button><span class="muted">'+(setCount>0?setCount+' of '+PROF_CATS.length+' categories have prices set':'No prices set yet — open to set them')+'</span></div>';
-    if(!profPricesOpen){h+='</div>';return h;}
+    var setCount=0,marginCount=0;
+    PRICE_CATS.forEach(function(c){if(profHasPrice(c[0]))setCount++;if(profPrice(c[0]).marginPct!=null)marginCount++;});
+    h+='<div class="card"><h2>Permanent price list — sell, margin &amp; buy per category</h2>';
+    h+='<p class="muted" style="margin:0 0 12px">Set once, stays until you change it. The Shift / Whole-day / Week reports use these prices — an edited sell price comes first, then the Z-Report auto price, then the catalogue price. Buy = sell \u00f7 (1 + margin) wherever a margin is given.</p>';
+    h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><span class="muted">'+setCount+' of '+PRICE_CATS.length+' categories have prices set \u00b7 '+marginCount+' have a margin</span>'+(profEdit?'':'<button type="button" class="btn" data-prof="prices-edit">Edit prices</button>')+'</div>';
     if(!profEdit){
-      h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell</th><th style="text-align:right">Profit / item</th><th style="text-align:right">Margin</th><th>Last changed</th></tr></thead><tbody>';
-      PROF_CATS.forEach(function(c){
+      h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Sell $</th><th style="text-align:right">Margin</th><th style="text-align:right">Buy $</th><th style="text-align:right">Profit / item</th><th>Last changed</th></tr></thead><tbody>';
+      PRICE_CATS.forEach(function(c){
         var pr=profPrice(c[0]),hasP=profHasPrice(c[0]);
-        h+='<tr><td>'+c[1]+'</td><td style="text-align:right">'+(pr.buy>0?usd(pr.buy):'—')+'</td><td style="text-align:right">'+(pr.sellPct!=null?(pr.sellPct.toFixed(1)+'%'+(pr.sell>0?' ('+usd(pr.sell)+')':'')):(pr.sell>0?usd(pr.sell):'—'))+'</td><td style="text-align:right">'+(hasP?usd(r2(pr.sell-pr.buy)):'—')+'</td><td style="text-align:right">'+(hasP?(100*profMargin(c[0])).toFixed(1)+'%':'—')+'</td><td>'+(pr.updated||'—')+'</td></tr>';
+        var mg=pr.marginPct!=null?pr.marginPct.toFixed(0)+'%':(hasP?(100*profMargin(c[0])).toFixed(1)+'%':'not given yet');
+        var src=pr.edited?'edited':(CAT_SELL_DEFAULT[c[0]]?'catalogue':'\u2014');
+        h+='<tr><td>'+c[1]+(c[0]==='ccfee'?' <span class="muted">(price list only \u2014 no shift quantities)</span>':'')+'</td><td style="text-align:right">'+(pr.sell>0?usd(pr.sell):'\u2014')+' <span class="muted">'+src+'</span></td><td style="text-align:right">'+mg+'</td><td style="text-align:right">'+(pr.buy>0?usd(pr.buy):'\u2014')+'</td><td style="text-align:right">'+(hasP?usd(r2(pr.sell-pr.buy)):'\u2014')+'</td><td>'+(pr.updated||'\u2014')+'</td></tr>';
       });
       h+='</tbody></table></div>';
-      h+='<p class="note">Buy prices are saved on this device only — set them once from your purchase orders. Sell prices now fill themselves in from the Z-Report (amount \u00f7 qty) for each shift when the sheets have that shift; the sell price you set here is the fallback when they do not.</p>';
-      h+='<div style="margin-top:12px"><button type="button" class="btn" data-prof="prices-edit">Edit prices</button></div>';
+      h+='<p class="note">Margins given by the owner (Nov 15, 2026): Phone Cards 100%, Juice 40%, Wine 40%, Snacks &amp; Chips 40%, Beer 35%, Misc. No Tax 100%, CC Fee 100%, Coffee sold at cost (0%). Other categories have no margin yet — their buy price is set by hand until you give one. CC Fee is on the price list only: the Z-Report feed has no CC Fee quantities, so it has no shift profit row.</p>';
     }else{
-      h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Buy $</th><th style="text-align:right">Sell $ / %</th></tr></thead><tbody>';
-      PROF_CATS.forEach(function(c){
-        var dr=profDraft[c[0]]||{buy:'',sell:''};
-        h+='<tr><td>'+c[1]+'</td><td style="text-align:right"><div class="in"><i>$</i><input data-prof-price="'+c[0]+':buy" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+dr.buy+'"></div></td><td style="text-align:right"><div class="in"><input data-prof-price="'+c[0]+':sell" inputmode="decimal" autocomplete="off" placeholder="0.00 or 50%" value="'+dr.sell+'"></div></td></tr>';
+      h+='<div class="tbl"><table><thead><tr><th>Category</th><th style="text-align:right">Sell $</th><th style="text-align:right">Margin %</th><th style="text-align:right">Buy $</th></tr></thead><tbody>';
+      PRICE_CATS.forEach(function(c){
+        var dr=profDraft[c[0]]||{buy:'',sell:'',margin:''};
+        var sellPh=CAT_SELL_DEFAULT[c[0]]?('catalogue '+usd(CAT_SELL_DEFAULT[c[0]])):'0.00';
+        h+='<tr><td>'+c[1]+'</td><td style="text-align:right"><div class="in"><i>$</i><input data-prof-price="'+c[0]+':sell" inputmode="decimal" autocomplete="off" placeholder="'+sellPh+'" value="'+dr.sell+'"></div></td><td style="text-align:right"><div class="in"><input data-prof-price="'+c[0]+':margin" inputmode="decimal" autocomplete="off" placeholder="e.g. 35" value="'+dr.margin+'"></div></td><td style="text-align:right"><div class="in"><i>$</i><input data-prof-price="'+c[0]+':buy" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+dr.buy+'"></div></td></tr>';
       });
       h+='</tbody></table></div>';
       h+='<div style="margin-top:12px;display:flex;gap:8px"><button type="button" class="btn" data-prof="prices-save">Save prices</button><button type="button" class="btn btn-secondary" data-prof="prices-cancel">Cancel</button></div>';
-      h+='<p class="note">Leave a price blank if a category has no set price yet — its profit will show as $0.00 until you set one.</p>';
+      h+='<p class="note">Margin % is markup on the buy price: buy = sell \u00f7 (1 + margin). When a margin is set, the buy box shows the worked-out number — change the margin or the sell to change buy. Leave margin blank where no margin is given and buy stays as entered. Leave sell blank to go back to the catalogue price. An edited sell price takes first place in the Shift / Whole-day / Week reports.</p>';
     }
     h+='</div>';
     return h;
@@ -466,6 +500,7 @@
   function renderProfit(){
     var d=P.date,h='';
     if(!d||!validDate(d)){P.date=todayStr();d=P.date;}
+    h+=profPricesCard();
     h+='<div class="card"><h2>Profit calculator</h2><div class="repctl">';
     h+='<div class="row2"><button type="button" class="btn" data-prof="prev-day" aria-label="Previous day">‹</button><label class="datepick" style="flex:1"><span>Show date</span><input type="date" data-prof-date value="'+d+'"></label><button type="button" class="btn" data-prof="next-day" aria-label="Next day">›</button><button type="button" class="btn" data-prof="today">Today</button><button type="button" class="btn" data-prof="refresh">Refresh</button></div>';
     h+='<div class="seg" role="group" aria-label="Profit view"><button type="button" class="btn" data-prof="mode-shift" aria-pressed="'+(P.mode==='shift')+'">Shift</button><button type="button" class="btn" data-prof="mode-day" aria-pressed="'+(P.mode==='day')+'">Whole day</button><button type="button" class="btn" data-prof="mode-week" aria-pressed="'+(P.mode==='week')+'">Week</button></div>';
@@ -486,7 +521,6 @@
     else res=profWeekView(d);
     h+=res.h;
     profTotals={has:res.totals.has,profit:res.totals.profit,sales:res.totals.sales};
-    h+=profPricesCard();
     h+='<p class="note">Test feature: quantities and sell prices come from the Z-Report (Sales by Department) — sell = amount \u00f7 qty for each shift, marked \u201cauto\u201d. Buy prices are set by you, once. The sheets are only used for the inside-sales total above. Fuel profit is on Shift 3 / Reports — this section covers the scanned goods.</p>';
     document.getElementById('profit').innerHTML=h;
   }
@@ -505,22 +539,31 @@
     else if(k==='refresh'){feedLoad(true);return;}
     else if(k.indexOf('shift-')===0){P.shift=Number(k.slice(6));P.mode='shift';}
     else if(k.indexOf('day-')===0){P.date=k.slice(4);P.mode='day';}
-    else if(k==='prices-toggle'){profPricesOpen=!profPricesOpen;}
-    else if(k==='prices-edit'){profEdit=true;profDraft={};PROF_CATS.forEach(function(c){var pr=profPrice(c[0]);profDraft[c[0]]={buy:pr.buy>0?String(pr.buy):'',sell:pr.sellPct!=null?String(pr.sellPct)+'%':(pr.sell>0?String(pr.sell):'')};});}
+    else if(k==='prices-edit'){profEdit=true;profDraft={};PRICE_CATS.forEach(function(c){var pr=profPrice(c[0]);profDraft[c[0]]={buy:pr.buy>0?String(pr.buy):'',sell:pr.edited?String(pr.sell):'',margin:pr.marginPct!=null?String(pr.marginPct):''};});}
     else if(k==='prices-cancel'){profEdit=false;}
     else if(k==='prices-save'){
       var np={};
-      PROF_CATS.forEach(function(c){
+      PRICE_CATS.forEach(function(c){
         var dr=profDraft[c[0]]||{};
         var buy=num(dr.buy);
         var sellRaw=String(dr.sell==null?'':dr.sell).trim();
-        var pct=null,sell=0;
-        if(sellRaw.indexOf('%')>=0){pct=num(sellRaw.replace(/%/g,''));}
-        else sell=num(sellRaw);
-        if(buy>0||sell>0||(pct!=null&&pct>0)){
-          var rec={buy:r2(buy),updated:todayStr()};
-          if(pct!=null&&pct>0&&pct<100)rec.sellPct=r2(pct);
-          else rec.sell=r2(sell);
+        var marginRaw=String(dr.margin==null?'':dr.margin).trim();
+        var margin=marginRaw==='' ? null : num(marginRaw);
+        var old=readPrices()[c[0]]||{};
+        if(sellRaw.indexOf('%')>=0){
+          var pct=num(sellRaw.replace(/%/g,''));
+          if(buy>0||(pct!=null&&pct>0&&pct<100)){
+            var rec2={buy:r2(buy),updated:todayStr()};
+            if(pct>0&&pct<100)rec2.sellPct=r2(pct);
+            if(margin!=null)rec2.marginPct=r2(margin);
+            np[c[0]]=rec2;
+          }
+        }else if(buy>0||num(sellRaw)>0||margin!=null){
+          var rec={updated:todayStr()};
+          if(margin!=null)rec.marginPct=r2(margin);
+          if(num(sellRaw)>0)rec.sell=r2(num(sellRaw));
+          if(margin==null&&buy>0)rec.buy=r2(buy);
+          if(old.sellPct!=null&&sellRaw===''&&num(sellRaw)<=0)rec.sellPct=old.sellPct;
           np[c[0]]=rec;
         }
       });
