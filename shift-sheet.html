@@ -317,7 +317,7 @@ function fmtOut(v,f){
 }
 
 /* ---------- state ---------- */
-var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[],vendEdit:false,vendDraft:[],vendEditEntry:null},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0}};
+var state={days:{},date:'',tab:0,cs:[],isOwner:false,settings:{types:DEFAULT_TYPES.slice(),gas:{g87:'',g89:'',g93:''},cost:[]},ui:{gasEdit:false,gasDraft:{},costEdit:false,costDraft:{},typesEdit:false,typesDraft:[],vendEdit:false,vendDraft:[],vendEditEntry:null,stlDelEnv:''},rep:{mode:'day',shift:0,date:'',delArm:''},repTotals:{has:false,collected:0,sales:0,so:0},drep:{mode:'shift',shift:0,date:'',loaded:false,loading:false,error:'',updated:''},drepData:null,drepTotals:{has:false,collected:0,sales:0,so:0},stl:{date:'',editPay:null}};
 var mode='init',dbCol=null,dbSet=null;
 var dirty={},ver={},saving=false,saveTimer=null,armed=false,armTimer=null,resetArmed=false,resetTimer=null;
 function ensureDay(d){if(!state.days[d])state.days[d]=normDay(null);return state.days[d];}
@@ -1129,10 +1129,167 @@ function renderVendors(){
   $('#main').innerHTML=h;
 }
 
+/* ---------- settlement tab (daily cash / bank settlement — manual, on this device only) ---------- */
+var STL_LS='gas-settlement-v1';
+var STL_PAY_TYPES=['Cash','Card','Bank transfer','Other'];
+var stlStore={envelopes:[],days:{}};
+function stlLoad(){
+  var o=null;
+  try{o=JSON.parse(localStorage.getItem(STL_LS)||'null');if(o&&typeof o==='object')stlStore=o;}catch(e){o=null;}
+  if(!Array.isArray(stlStore.envelopes))stlStore.envelopes=[];
+  if(!stlStore.days||typeof stlStore.days!=='object')stlStore.days={};
+  if(!stlStore.envelopes.length&&!(o&&Array.isArray(o.envelopes))){
+    stlStore.envelopes=[{id:'e1',name:'Envelope 1'},{id:'e2',name:'Envelope 2'},{id:'e3',name:'Envelope 3'}];
+    stlSave();
+  }
+  stlStore.envelopes=stlStore.envelopes.filter(function(x){return x&&x.id&&String(x.name||'').trim();});
+}
+function stlSave(){try{localStorage.setItem(STL_LS,JSON.stringify(stlStore));}catch(e){}}
+function stlId(p){return p+Date.now().toString(36)+Math.floor(Math.random()*1e6).toString(36);}
+function stlDay(d){
+  if(!stlStore.days[d])stlStore.days[d]={cashOverride:['','',''],envAmt:{},payments:[]};
+  var r=stlStore.days[d];
+  if(!Array.isArray(r.cashOverride))r.cashOverride=['','',''];
+  while(r.cashOverride.length<N_SHIFTS)r.cashOverride.push('');
+  if(!r.envAmt||typeof r.envAmt!=='object')r.envAmt={};
+  if(!Array.isArray(r.payments))r.payments=[];
+  return r;
+}
+function stlPayNorm(x){
+  return {id:x.id||stlId('p'),who:String(x.who||'').trim(),type:STL_PAY_TYPES.indexOf(x.type)>=0?x.type:'Cash',debit:r2(num(x.debit)),credit:r2(num(x.credit))};
+}
+function stlShiftTotals(d){
+  var day=state.days[d],dc=day?dayCalc(d):null,rec=stlDay(d);
+  var shifts=[],tot={cash:0,cards:0,sales:0,payT:0,expDep:0,has:false};
+  for(var i=0;i<N_SHIFTS;i++){
+    var c=dc?dc.cs[i]:null;
+    var auto=c?c.cash:0;
+    var ov=String(rec.cashOverride[i]==null?'':rec.cashOverride[i]).trim();
+    var has=(c&&c.has)||ov!=='';
+    var cash=ov!==''?num(ov):auto;
+    var cards=c?c.cards:0,sales=c?c.sales:0,payT=c?c.payT:0;
+    var exp=has?r2(cash-payT-300):0;
+    shifts.push({i:i,auto:r2(auto),manual:ov!=='',cash:r2(cash),cards:r2(cards),sales:r2(sales),payT:r2(payT),exp:exp,has:has});
+    if(has){tot.cash=r2(tot.cash+cash);tot.cards=r2(tot.cards+cards);tot.sales=r2(tot.sales+sales);tot.payT=r2(tot.payT+payT);tot.expDep=r2(tot.expDep+exp);tot.has=true;}
+  }
+  var envT=0;stlStore.envelopes.forEach(function(e){envT=r2(envT+num(rec.envAmt[e.id]));});
+  var payD=0,payC=0,settledN=0;rec.payments.forEach(function(p){payD=r2(payD+p.debit);payC=r2(payC+p.credit);if(Math.abs(p.debit-p.credit)<0.005)settledN++;});
+  tot.envT=envT;tot.payD=payD;tot.payC=payC;tot.payN=rec.payments.length;tot.settledN=settledN;tot.unalloc=r2(tot.expDep-envT);
+  return {shifts:shifts,tot:tot,rec:rec};
+}
+function stlWork(s){return usd(s.cash)+' \u2212 '+usd(s.payT)+' \u2212 $300.00';}
+function stlTotals(){
+  var d=state.stl.date||state.date;if(!validDate(d))return;
+  var T=stlShiftTotals(d),tot=T.tot,map={};
+  T.shifts.forEach(function(s){
+    map['cash'+s.i]=s.has?usd(s.cash):'\u2014';
+    map['exp'+s.i]=s.has?usd(s.exp):'\u2014';
+    map['work'+s.i]=s.has?stlWork(s):'no entries yet';
+  });
+  map.tcash=tot.has?usd(tot.cash):'\u2014';
+  map.tcards=tot.has?usd(tot.cards):'\u2014';
+  map.tsales=tot.has?usd(tot.sales):'\u2014';
+  map.tpay=tot.has?usd(tot.payT):'\u2014';
+  map.texp=tot.has?usd(tot.expDep):'\u2014';
+  map.tenv=usd(tot.envT);
+  map.tunalloc=tot.has?usd(tot.unalloc):'\u2014';
+  map.tpayd=usd(tot.payD);
+  map.tpayc=usd(tot.payC);
+  map.tpayn=tot.settledN+' of '+tot.payN;
+  $$('#main [data-stlt]').forEach(function(el){var v=map[el.dataset.stlt];if(v!==undefined)el.textContent=v;});
+}
+function stlCopyText(d){
+  var T=stlShiftTotals(d),tot=T.tot,rec=T.rec;
+  var L=[];
+  L.push('Uptown Shell \u2014 Daily settlement \u2014 '+fmtDayLong(d));
+  T.shifts.forEach(function(s){
+    L.push('Shift '+(s.i+1)+': cash '+(s.has?usd(s.cash):'no entries')+(s.manual?' (manual)':'')+' \u00b7 cards '+(s.has?usd(s.cards):'\u2014')+' \u00b7 sales '+(s.has?usd(s.sales):'\u2014')+' \u00b7 pay outs '+(s.has?usd(s.payT):'\u2014')+' \u00b7 to safe '+(s.has?usd(s.exp):'\u2014'));
+  });
+  L.push('Day total: cash '+usd(tot.cash)+' \u00b7 cards '+usd(tot.cards)+' \u00b7 sales '+usd(tot.sales)+' \u00b7 pay outs '+usd(tot.payT)+' \u00b7 cash to safe '+usd(tot.expDep));
+  L.push('Envelopes: '+stlStore.envelopes.map(function(e){return e.name+' '+usd(num(rec.envAmt[e.id]));}).join(' \u00b7 ')+' (total '+usd(tot.envT)+')');
+  L.push('Cash to safe not yet in an envelope: '+usd(tot.unalloc));
+  L.push('Payments: debit '+usd(tot.payD)+' \u00b7 credit '+usd(tot.payC)+' \u00b7 settled '+tot.settledN+' of '+tot.payN);
+  rec.payments.forEach(function(p){L.push('  '+p.who+' \u2014 '+p.type+' \u2014 debit '+usd(p.debit)+' \u00b7 credit '+usd(p.credit)+' \u2014 '+(Math.abs(p.debit-p.credit)<0.005?'Settled':'Open '+usd(Math.abs(p.debit-p.credit))));});
+  return L.join('\n');
+}
+function stlCopyFallback(txt){
+  try{var ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);}catch(e){}
+}
+function renderSettlement(){
+  var d=state.stl.date||state.date;
+  if(!validDate(d)){d=state.date;state.stl.date=d;}
+  var T=stlShiftTotals(d),rec=T.rec,tot=T.tot;
+  var ed=state.stl.editPay||null;
+  var h='';
+  h+='<div class="grid"><section class="card wide"><h2>Settlement \u2014 '+fmtDayLong(d)+'</h2><div class="repctl"><div class="row2"><button type="button" class="btn" data-stl="prev-day" aria-label="Previous day">\u2039</button><label class="datepick" style="flex:1"><span>Show date</span><input type="date" data-stl="stldate" value="'+d+'"></label><button type="button" class="btn" data-stl="next-day" aria-label="Next day">\u203a</button><button type="button" class="btn" data-stl="today">Today</button></div></div>';
+  h+='<p class="note">Cash and card totals are pulled in from the shift sheet for this date. Tap a Manual cash box to override a shift \u2014 the totals update at once. Envelopes and payments are entered by hand. Saved on this device only \u2014 nothing here goes to any sheet.</p></section></div>';
+  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>Cash by shift</h2><div class="tbl"><table><thead><tr><th>Shift</th><th style="text-align:right">Cash counted (shift sheet)</th><th style="text-align:right">Manual cash</th><th style="text-align:right">Cards</th><th style="text-align:right">Total sales</th><th style="text-align:right">Pay outs</th><th style="text-align:right">Cash to safe</th></tr></thead><tbody>';
+  T.shifts.forEach(function(s){
+    h+='<tr><td>Shift '+(s.i+1)+'</td>';
+    h+='<td style="text-align:right">'+(s.has?usd(s.auto):'\u2014')+'</td>';
+    h+='<td><div class="in"><i>$</i><input data-stl="cashov" data-i="'+s.i+'" inputmode="decimal" autocomplete="off" placeholder="'+(s.has?s.auto.toFixed(2):'0.00')+'" value="'+esc(String(rec.cashOverride[s.i]==null?'':rec.cashOverride[s.i]))+'"><button type="button" class="negt'+(num(rec.cashOverride[s.i])<0?' on':'')+'" data-stlneg="cashov:'+s.i+'" title="Make negative / positive" aria-label="Toggle minus">\u2212</button></div></td>';
+    h+='<td style="text-align:right">'+(s.has?usd(s.cards):'\u2014')+'</td>';
+    h+='<td style="text-align:right">'+(s.has?usd(s.sales):'\u2014')+'</td>';
+    h+='<td style="text-align:right">'+(s.has?usd(s.payT):'\u2014')+'</td>';
+    h+='<td style="text-align:right"><b data-stlt="exp'+s.i+'">'+(s.has?usd(s.exp):'\u2014')+'</b><br><small class="muted" data-stlt="work'+s.i+'">'+(s.has?stlWork(s):'no entries yet')+'</small></td></tr>';
+  });
+  h+='<tr class="key"><td>Day total</td><td style="text-align:right"><b data-stlt="tcash">'+(tot.has?usd(tot.cash):'\u2014')+'</b></td><td></td><td style="text-align:right"><b data-stlt="tcards">'+(tot.has?usd(tot.cards):'\u2014')+'</b></td><td style="text-align:right"><b data-stlt="tsales">'+(tot.has?usd(tot.sales):'\u2014')+'</b></td><td style="text-align:right"><b data-stlt="tpay">'+(tot.has?usd(tot.payT):'\u2014')+'</b></td><td style="text-align:right"><b data-stlt="texp">'+(tot.has?usd(tot.expDep):'\u2014')+'</b></td></tr>';
+  h+='</tbody></table></div>';
+  h+='<p class="note">Cash to safe per shift = cash counted \u2212 pay outs \u2212 $300 float (the $150 in each of the 2 drawers stays). Only shifts with entries count. The Manual cash box is blank when the shift-sheet figure is used.</p>';
+  h+='</div></div>';
+  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>Envelopes</h2>';
+  h+='<p class="note">Where the cash goes. Rename an envelope once and the new name shows everywhere it appears.</p>';
+  h+='<div class="tbl"><table><thead><tr><th>Envelope</th><th style="text-align:right">Amount</th><th></th></tr></thead><tbody>';
+  stlStore.envelopes.forEach(function(en){
+    var amt=rec.envAmt[en.id];
+    h+='<tr><td><div class="in txt"><input data-stl="envname" data-eid="'+en.id+'" autocomplete="off" aria-label="Envelope name" value="'+esc(en.name)+'"></div></td>';
+    h+='<td><div class="in"><i>$</i><input data-stl="envamt" data-eid="'+en.id+'" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+esc(amt==null?'':amt)+'"><button type="button" class="negt'+(num(amt)<0?' on':'')+'" data-stlneg="envamt:'+en.id+'" title="Make negative / positive" aria-label="Toggle minus">\u2212</button></div></td>';
+    h+='<td style="white-space:nowrap"><button type="button" class="link '+(state.ui.stlDelEnv===en.id?'armed':'danger')+'" data-stl="del-env" data-eid="'+en.id+'">'+(state.ui.stlDelEnv===en.id?'Tap again to delete':'Delete')+'</button></td></tr>';
+  });
+  h+='<tr class="key"><td>Envelopes total</td><td style="text-align:right"><b data-stlt="tenv">'+usd(tot.envT)+'</b></td><td></td></tr>';
+  h+='</tbody></table></div>';
+  h+='<div class="btnrow" style="margin-top:12px"><button type="button" class="btn" data-stl="add-env">Add envelope</button></div>';
+  h+='</div></div>';
+  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>Cash settlement</h2>';
+  if(!rec.payments.length){h+='<p class="note">No payments recorded this day.</p>';}
+  else{
+    h+='<div class="tbl"><table><thead><tr><th>Paid to / for</th><th>Type</th><th style="text-align:right">Debit</th><th style="text-align:right">Credit</th><th>Settled</th><th></th></tr></thead><tbody>';
+    rec.payments.forEach(function(p){
+      h+='<tr><td>'+esc(p.who||'\u2014')+'</td><td>'+esc(p.type)+'</td><td style="text-align:right">'+usd(p.debit)+'</td><td style="text-align:right">'+usd(p.credit)+'</td><td>'+settledPill(p.debit,p.credit)+'</td><td style="white-space:nowrap"><button type="button" class="link" data-stl="edit-pay" data-pid="'+p.id+'">Edit</button> <button type="button" class="link" data-stl="del-pay" data-pid="'+p.id+'">Delete</button></td></tr>';
+    });
+    h+='<tr class="key"><td>Total</td><td></td><td style="text-align:right"><b data-stlt="tpayd">'+usd(tot.payD)+'</b></td><td style="text-align:right"><b data-stlt="tpayc">'+usd(tot.payC)+'</b></td><td>'+settledPill(tot.payD,tot.payC)+'</td><td></td></tr>';
+    h+='</tbody></table></div>';
+  }
+  h+='</div></div>';
+  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>'+(ed?'Edit payment':'Add a payment')+'</h2><div class="rows">';
+  h+='<div class="f"><label for="spf-who">Paid to / for</label><div class="in txt"><input id="spf-who" autocomplete="off" placeholder="e.g. Bank deposit, Pepsi" value="'+esc(ed?ed.who:'')+'"></div></div>';
+  h+='<div class="f"><label for="spf-type">Payment type</label><div class="in"><select id="spf-type">'+STL_PAY_TYPES.map(function(t){return '<option value="'+t+'"'+((ed?ed.type:'Cash')===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div></div>';
+  h+='<div class="f"><label for="spf-debit">Debit</label><div class="in"><i>$</i><input id="spf-debit" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+(ed?ed.debit:'')+'"><button type="button" class="negt'+(ed&&num(ed.debit)<0?' on':'')+'" data-stlneg="form:debit" title="Make negative / positive" aria-label="Toggle minus">\u2212</button></div></div>';
+  h+='<div class="f"><label for="spf-credit">Credit</label><div class="in"><i>$</i><input id="spf-credit" inputmode="decimal" autocomplete="off" placeholder="0.00" value="'+(ed?ed.credit:'')+'"><button type="button" class="negt'+(ed&&num(ed.credit)<0?' on':'')+'" data-stlneg="form:credit" title="Make negative / positive" aria-label="Toggle minus">\u2212</button></div></div>';
+  h+='</div><div class="btnrow" style="margin-top:12px"><button type="button" class="btn" data-stl="save-pay">'+(ed?'Save changes':'Add payment')+'</button>'+(ed?'<button type="button" class="btn" data-stl="cancel-pay">Cancel</button>':'')+'</div>';
+  h+='<p class="note">Settled when Debit = Credit. Anything left over shows as Open with the outstanding amount.</p>';
+  h+='</div></div>';
+  h+='<div class="grid" style="margin-top:16px"><div class="card wide"><h2>Day summary \u2014 '+fmtDayLong(d)+'</h2><div class="tbl"><table><tbody>';
+  h+='<tr><td>Cash counted (all shifts)</td><td style="text-align:right"><b data-stlt="tcash">'+(tot.has?usd(tot.cash):'\u2014')+'</b></td></tr>';
+  h+='<tr><td>Card sales</td><td style="text-align:right"><b data-stlt="tcards">'+(tot.has?usd(tot.cards):'\u2014')+'</b></td></tr>';
+  h+='<tr><td>Total sales</td><td style="text-align:right"><b data-stlt="tsales">'+(tot.has?usd(tot.sales):'\u2014')+'</b></td></tr>';
+  h+='<tr><td>Pay outs</td><td style="text-align:right"><b data-stlt="tpay">'+(tot.has?usd(tot.payT):'\u2014')+'</b></td></tr>';
+  h+='<tr class="key"><td>Cash to deposit to the safe</td><td style="text-align:right"><b data-stlt="texp">'+(tot.has?usd(tot.expDep):'\u2014')+'</b></td></tr>';
+  h+='<tr><td>Envelopes total</td><td style="text-align:right"><b data-stlt="tenv">'+usd(tot.envT)+'</b></td></tr>';
+  h+='<tr><td>Cash to safe not yet in an envelope</td><td style="text-align:right"><b data-stlt="tunalloc">'+(tot.has?usd(tot.unalloc):'\u2014')+'</b></td></tr>';
+  h+='<tr><td>Payments \u2014 debit / credit</td><td style="text-align:right"><b><span data-stlt="tpayd">'+usd(tot.payD)+'</span> / <span data-stlt="tpayc">'+usd(tot.payC)+'</span></b></td></tr>';
+  h+='<tr><td>Payments settled</td><td style="text-align:right"><b data-stlt="tpayn">'+tot.settledN+' of '+tot.payN+'</b></td></tr>';
+  h+='</tbody></table></div>';
+  h+='<div class="btnrow" style="margin-top:12px"><button type="button" class="btn" data-stl="copy">Copy day summary</button></div>';
+  h+='<p class="note">Copy the summary to paste it into a message or email \u2014 the daily settlement report email is sent with the closing reports.</p>';
+  h+='</div></div>';
+  $('#main').innerHTML=h;
+}
+
 function renderTabs(){
   var h='';
-  for(var i=0;i<=N_SHIFTS+3;i++){
-    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':(i===N_SHIFTS+2?'Daily Reports':'Vendors'))))+'</span><span class="tm" id="tm'+i+'"></span></button>';
+  for(var i=0;i<=N_SHIFTS+4;i++){
+    h+='<button type="button" role="tab" class="tab" id="tab'+i+'" data-tab="'+i+'" aria-selected="'+(state.tab===i)+'"><span>'+(i<N_SHIFTS?'Shift '+(i+1):(i===N_SHIFTS?'Day total':(i===N_SHIFTS+1?'Reports':(i===N_SHIFTS+2?'Daily Reports':(i===N_SHIFTS+3?'Vendors':'Settlement')))))+'</span><span class="tm" id="tm'+i+'"></span></button>';
   }
   $('#tabs').innerHTML=h;
 }
@@ -1149,6 +1306,7 @@ function updateLive(){
   var t4=$('#tm'+(N_SHIFTS+1));if(t4){var r4=state.repTotals||{has:false,so:0};var i4=soInfo(r4.so||0,r4.has);t4.className='tm '+i4.cls;t4.textContent=r4.has?soText(r4.so):'—';}
   var t5=$('#tm'+(N_SHIFTS+2));if(t5){var r5=state.drepTotals||{has:false,sales:0};t5.className='tm';t5.textContent=r5.has?usd(r5.sales||0):'—';}
   var t6=$('#tm'+(N_SHIFTS+3));if(t6){var v6=vendDayItems(state.date);t6.className='tm';t6.textContent=v6.has?usd(v6.total):'—';}
+  var t7=$('#tm'+(N_SHIFTS+4));if(t7){var s7=stlShiftTotals(state.stl.date||state.date);t7.className='tm';t7.textContent=s7.tot.has?usd(s7.tot.expDep):'—';}
   /* current shift fields */
   if(state.tab<N_SHIFTS){
     var o=dc.cs[state.tab];
@@ -1164,7 +1322,7 @@ function updateLive(){
   else if(state.tab===N_SHIFTS+2){var rd=state.drepTotals||{so:0,has:false,collected:0,sales:0};c2={so:rd.so,has:rd.has,collected:rd.collected,sales:rd.sales};}
   else c2=isDay?{so:dc.so,has:dc.has,collected:dc.collected,sales:dc.sales}:dc.cs[state.tab];
   var bi=soInfo(c2.so,c2.has);
-  $('#barTitle').textContent=state.tab===N_SHIFTS+3?'Vendors':(state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1))));
+  $('#barTitle').textContent=state.tab===N_SHIFTS+4?'Settlement':(state.tab===N_SHIFTS+3?'Vendors':(state.tab===N_SHIFTS+2?'Daily Reports':(state.tab===N_SHIFTS+1?'Reports':(isDay?'Day total':'Shift '+(state.tab+1)))));
   $('#barSub').textContent='Collected '+usd(c2.collected)+'  ·  Sales '+usd(c2.sales);
   var bn=$('#barNum');bn.className='bn '+bi.cls;bn.textContent=c2.has?soText(c2.so):'—';
   var bp=$('#barPill');bp.className='pill '+bi.cls;bp.textContent=bi.word;
@@ -1194,7 +1352,7 @@ function renderDates(){
 }
 function renderAll(){
   renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else renderVendors();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else if(state.tab===N_SHIFTS+3)renderVendors();else renderSettlement();
   renderDates();updateLive();
   armed=false;var dd=$('#delDay');dd.textContent='Delete this day';dd.classList.remove('armed');
 }
@@ -1293,7 +1451,7 @@ main.addEventListener('click',function(e){
 $('#tabs').addEventListener('click',function(e){
   var b=e.target.closest('[data-tab]');if(!b)return;
   state.tab=Number(b.dataset.tab);renderTabs();
-  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else renderVendors();
+  if(state.tab<N_SHIFTS)renderShift();else if(state.tab===N_SHIFTS)renderDay();else if(state.tab===N_SHIFTS+1)renderReports();else if(state.tab===N_SHIFTS+2)renderDailyReports();else if(state.tab===N_SHIFTS+3)renderVendors();else renderSettlement();
   if(state.tab===N_SHIFTS+2)drepLoad(false);
   updateLive();
   window.scrollTo({top:0});
@@ -1394,6 +1552,89 @@ main.addEventListener('click',function(e){
     renderVendors();updateLive();return;
   }
 });
+main.addEventListener('input',function(e){
+  var t=e.target,ds=t.dataset||{};
+  if(state.tab!==N_SHIFTS+4||ds.stl===undefined)return;
+  var d=state.stl.date||state.date,rec=stlDay(d);
+  if(ds.stl==='cashov'){rec.cashOverride[Number(ds.i)]=t.value;stlSave();stlTotals();updateLive();return;}
+  if(ds.stl==='envamt'){rec.envAmt[ds.eid]=t.value;stlSave();stlTotals();updateLive();return;}
+  if(ds.stl==='envname'){stlStore.envelopes.forEach(function(en){if(en.id===ds.eid)en.name=String(t.value||'');});stlSave();return;}
+});
+main.addEventListener('change',function(e){
+  var t=e.target,ds=t.dataset||{};
+  if(state.tab!==N_SHIFTS+4)return;
+  if(ds.stl==='envname'){renderSettlement();updateLive();return;}
+  if(ds.stl==='stldate'&&validDate(t.value)){state.stl.date=t.value;state.stl.editPay=null;renderSettlement();updateLive();return;}
+});
+main.addEventListener('click',function(e){
+  var ng=e.target.closest('[data-stlneg]');
+  if(ng&&state.tab===N_SHIFTS+4){
+    var spec=ng.dataset.stlneg.split(':'),f=spec[0],key=spec[1],d0=state.stl.date||state.date;
+    if(f==='form'){
+      var el=document.getElementById('spf-'+key);
+      if(el){var v3=String(el.value||'').trim();el.value=v3.charAt(0)==='-'?v3.slice(1):'-'+v3;ng.classList.toggle('on',num(el.value)<0);}
+      return;
+    }
+    var rec0=stlDay(d0);
+    if(f==='cashov'){var v=String(rec0.cashOverride[Number(key)]||'').trim();rec0.cashOverride[Number(key)]=v.charAt(0)==='-'?v.slice(1):'-'+v;stlSave();renderSettlement();updateLive();return;}
+    if(f==='envamt'){var v2=String(rec0.envAmt[key]||'').trim();rec0.envAmt[key]=v2.charAt(0)==='-'?v2.slice(1):'-'+v2;stlSave();renderSettlement();updateLive();return;}
+    return;
+  }
+  var b=e.target.closest('[data-stl]');if(!b||state.tab!==N_SHIFTS+4)return;
+  var k=b.dataset.stl,d=state.stl.date||state.date;
+  if(k==='prev-day'){state.stl.date=addDaysStr(d,-1);state.stl.editPay=null;renderSettlement();updateLive();return;}
+  if(k==='next-day'){state.stl.date=addDaysStr(d,1);state.stl.editPay=null;renderSettlement();updateLive();return;}
+  if(k==='today'){state.stl.date=todayStr();state.stl.editPay=null;renderSettlement();updateLive();return;}
+  if(k==='add-env'){
+    var n=stlStore.envelopes.length+1;
+    stlStore.envelopes.push({id:stlId('e'),name:'Envelope '+n});
+    stlSave();renderSettlement();updateLive();setStatus('ok','Envelope added \u2014 rename it in the box.');return;
+  }
+  if(k==='del-env'){
+    var eid=b.dataset.eid;
+    if(state.ui.stlDelEnv!==eid){state.ui.stlDelEnv=eid;renderSettlement();updateLive();setStatus('warn','Tap Delete again to remove this envelope everywhere \u2014 its amounts on every day go with it.');return;}
+    state.ui.stlDelEnv='';
+    stlStore.envelopes=stlStore.envelopes.filter(function(en){return en.id!==eid;});
+    Object.keys(stlStore.days).forEach(function(dd){if(stlStore.days[dd].envAmt)delete stlStore.days[dd].envAmt[eid];});
+    stlSave();renderSettlement();updateLive();setStatus('ok','Envelope deleted.');return;
+  }
+  if(k==='save-pay'){
+    var who=(document.getElementById('spf-who')||{}).value||'';
+    var ty=(document.getElementById('spf-type')||{}).value||'Cash';
+    var db=(document.getElementById('spf-debit')||{}).value||'0';
+    var cr=(document.getElementById('spf-credit')||{}).value||'0';
+    var rec=stlDay(d);
+    if(state.stl.editPay){
+      var found=null;rec.payments.forEach(function(p){if(p.id===state.stl.editPay.id)found=p;});
+      if(found){var nn=stlPayNorm({id:found.id,who:who,type:ty,debit:db,credit:cr});found.who=nn.who;found.type=nn.type;found.debit=nn.debit;found.credit=nn.credit;}
+      state.stl.editPay=null;setStatus('ok','Payment updated \u2014 saved on this device.');
+    }else{
+      rec.payments.push(stlPayNorm({who:who,type:ty,debit:db,credit:cr}));
+      setStatus('ok','Payment added \u2014 saved on this device.');
+    }
+    stlSave();renderSettlement();updateLive();return;
+  }
+  if(k==='cancel-pay'){state.stl.editPay=null;renderSettlement();updateLive();return;}
+  if(k==='edit-pay'){
+    var pid=b.dataset.pid,fp=null;stlDay(d).payments.forEach(function(p){if(p.id===pid)fp=p;});
+    if(!fp)return;
+    state.stl.editPay={id:fp.id,who:fp.who,type:fp.type,debit:fp.debit,credit:fp.credit};
+    renderSettlement();updateLive();return;
+  }
+  if(k==='del-pay'){
+    var pid2=b.dataset.pid,rec2=stlDay(d);
+    rec2.payments=rec2.payments.filter(function(p){return p.id!==pid2;});
+    if(state.stl.editPay&&state.stl.editPay.id===pid2)state.stl.editPay=null;
+    stlSave();renderSettlement();updateLive();setStatus('ok','Payment deleted.');return;
+  }
+  if(k==='copy'){
+    var txt=stlCopyText(d);
+    var done=function(){setStatus('ok','Day summary copied \u2014 paste it anywhere.');};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(done,function(){stlCopyFallback(txt);done();});}
+    else{stlCopyFallback(txt);done();}
+    return;
+  }
+});
 $('#dates').addEventListener('click',function(e){var b=e.target.closest('[data-date]');if(b)openDate(b.dataset.date,false);});
 $('#datePick').addEventListener('change',function(e){if(e.target.value)openDate(e.target.value,true);});
 $('#todayBtn').addEventListener('click',function(){openDate(todayStr(),true);});
@@ -1427,6 +1668,7 @@ function refreshView(){
   if(state.tab===N_SHIFTS+1){renderReports();updateLive();return;}
   if(state.tab===N_SHIFTS+2){renderDailyReports();updateLive();return;}
   if(state.tab===N_SHIFTS+3){renderVendors();updateLive();return;}
+  if(state.tab===N_SHIFTS+4){renderSettlement();updateLive();return;}
   if(typing())updateLive();else{renderShift();updateLive();}
 }
 function startLocal(){
@@ -1474,11 +1716,12 @@ function startDb(db){
 }
 function boot(){
   state.date=todayStr();ensureDay(state.date);
-  vendLoad();
+  vendLoad();stlLoad();
   var h=location.hash||'';
   if(h==='#reports')state.tab=N_SHIFTS+1;
   else if(h==='#daily-reports')state.tab=N_SHIFTS+2;
   else if(h==='#vendors')state.tab=N_SHIFTS+3;
+  else if(h==='#settlement')state.tab=N_SHIFTS+4;
   renderAll();
   if(state.tab===N_SHIFTS+2)drepLoad(false);
   setStatus('','Loading…');
