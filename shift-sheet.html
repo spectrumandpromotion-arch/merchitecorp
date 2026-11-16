@@ -710,7 +710,7 @@ function repDayView(d){
 function repWeekView(d){
   var ws=weekStartStr(d),we=addDaysStr(ws,6);
   var title='Week — '+fmtDay(ws)+' to '+fmtDay(we);
-  var days=[],tot={sales:0,collected:0,cash:0,cards:0,ebt:0,gasProfit:0,expDep:0,so:0};
+  var days=[],tot={sales:0,collected:0,cash:0,cards:0,ebt:0,gasProfit:0,expDep:0,so:0,gasGal:0,gas:0,merch:0};
   for(var i=0;i<7;i++){
     var dd=addDaysStr(ws,i),rd=repDay(dd);
     days.push({d:dd,rd:rd});
@@ -720,6 +720,9 @@ function repWeekView(d){
       tot.cards=r2(tot.cards+sum(rd.cs.map(function(c){return c.cards;})));
       tot.ebt=r2(tot.ebt+sum(rd.cs.map(function(c){return c.ebt;})));
       tot.gasProfit=r2(tot.gasProfit+sum(rd.cs.map(function(c){return c.gasProfit;})));
+      tot.gasGal=tot.gasGal+sum(rd.cs.map(function(c){return c.gasGal;}));
+      tot.gas=r2(tot.gas+sum(rd.cs.map(function(c){return c.fuel;})));
+      tot.merch=r2(tot.merch+sum(rd.cs.map(function(c){return c.merch;})));
       tot.expDep=r2(tot.expDep+sum(rd.cs.map(function(c){return r2(c.cash-c.payT-300);})));
       tot.so=r2(tot.so+rd.so);
     }
@@ -727,21 +730,21 @@ function repWeekView(d){
   var any=days.some(function(x){return x.rd&&x.rd.has;});
   var h='<div class="card wide"><h2>'+title+'</h2>';
   if(!any){h+='<p class="note">Nothing entered this week yet.</p></div>';return {h:h,totals:{has:false,collected:0,sales:0,so:0}};}
-  h+='<div class="tbl"><table><thead><tr><th>Day</th><th style="text-align:right">Sales</th><th style="text-align:right">Collected</th><th style="text-align:right">Cash</th><th style="text-align:right">Cards</th><th style="text-align:right">EBT</th><th style="text-align:right">Gas profit</th><th style="text-align:right">Exp. deposit</th><th style="text-align:right">Short / over</th></tr></thead><tbody>';
+  h+='<div class="tbl"><table><thead><tr><th>Day</th><th style="text-align:right">Sales</th><th style="text-align:right">Gas gal</th><th style="text-align:right">Gas $</th><th style="text-align:right">Merchandise</th><th style="text-align:right">Collected</th><th style="text-align:right">Cash</th><th style="text-align:right">Cards</th><th style="text-align:right">EBT</th><th style="text-align:right">Gas profit</th><th style="text-align:right">Exp. deposit</th><th style="text-align:right">Short / over</th></tr></thead><tbody>';
   days.forEach(function(x){
     var dt=toDate(x.d);
     var lbl=dt.toLocaleDateString('en-US',{weekday:'short'})+' '+fmtDay(x.d)+(uploadedAt(x.d)?' ✓':'');
-    if(!x.rd||!x.rd.has){h+='<tr><td><button type="button" class="repday" data-rep="day-'+x.d+'">'+lbl+'</button></td><td colspan="8" style="color:var(--muted)">No entries</td></tr>';return;}
+    if(!x.rd||!x.rd.has){h+='<tr><td><button type="button" class="repday" data-rep="day-'+x.d+'">'+lbl+'</button></td><td colspan="11" style="color:var(--muted)">No entries</td></tr>';return;}
     function s(key){return r2(sum(x.rd.cs.map(function(c){return c[key];})));}
     var exp=r2(sum(x.rd.cs.map(function(c){return r2(c.cash-c.payT-300);})));
     var soCls=soInfo(x.rd.so,true).cls;
     h+='<tr><td><button type="button" class="repday" data-rep="day-'+x.d+'">'+lbl+'</button></td>'+
-      '<td style="text-align:right">'+usd(x.rd.sales)+'</td><td style="text-align:right">'+usd(x.rd.collected)+'</td>'+
+      '<td style="text-align:right">'+usd(x.rd.sales)+'</td><td style="text-align:right">'+fmtOut(sum(x.rd.cs.map(function(c){return c.gasGal;})),'gal')+'</td><td style="text-align:right">'+usd(s('fuel'))+'</td><td style="text-align:right">'+usd(s('merch'))+'</td><td style="text-align:right">'+usd(x.rd.collected)+'</td>'+
       '<td style="text-align:right">'+usd(s('cash'))+'</td><td style="text-align:right">'+usd(s('cards'))+'</td>'+
       '<td style="text-align:right">'+usd(s('ebt'))+'</td><td style="text-align:right">'+usd(s('gasProfit'))+'</td>'+
       '<td style="text-align:right">'+usd(exp)+'</td><td style="text-align:right" class="'+soCls+'">'+soText(x.rd.so)+'</td></tr>';
   });
-  h+='<tr class="key"><td>Week total</td><td style="text-align:right">'+usd(tot.sales)+'</td><td style="text-align:right">'+usd(tot.collected)+'</td><td style="text-align:right">'+usd(tot.cash)+'</td><td style="text-align:right">'+usd(tot.cards)+'</td><td style="text-align:right">'+usd(tot.ebt)+'</td><td style="text-align:right">'+usd(tot.gasProfit)+'</td><td style="text-align:right">'+usd(tot.expDep)+'</td><td style="text-align:right">'+soText(tot.so)+'</td></tr>';
+  h+='<tr class="key"><td>Week total</td><td style="text-align:right">'+usd(tot.sales)+'</td><td style="text-align:right">'+fmtOut(tot.gasGal,'gal')+'</td><td style="text-align:right">'+usd(tot.gas)+'</td><td style="text-align:right">'+usd(tot.merch)+'</td><td style="text-align:right">'+usd(tot.collected)+'</td><td style="text-align:right">'+usd(tot.cash)+'</td><td style="text-align:right">'+usd(tot.cards)+'</td><td style="text-align:right">'+usd(tot.ebt)+'</td><td style="text-align:right">'+usd(tot.gasProfit)+'</td><td style="text-align:right">'+usd(tot.expDep)+'</td><td style="text-align:right">'+soText(tot.so)+'</td></tr>';
   h+='</tbody></table></div></div>';
   var list=[];for(var j=0;j<7;j++){for(var k=0;k<N_SHIFTS;k++)list.push({d:addDaysStr(ws,j),idx:k});}
   var pe=payeeTotals(list);
@@ -954,29 +957,29 @@ function drepDayView(d){
 }
 function drepWeekView(d){
   var ws=weekStartStr(d),we=addDaysStr(ws,6);
-  var days=[],tot={sales:0,gas:0,inside:0,pay:0,cash:0,cards:0,ebt:0,gp:0,exp:0};
+  var days=[],tot={sales:0,gas:0,gal:0,inside:0,pay:0,cash:0,cards:0,ebt:0,gp:0,exp:0};
   for(var j=0;j<7;j++){
     var dd=addDaysStr(ws,j),rows=[drepShiftRow(dd,0),drepShiftRow(dd,1),drepShiftRow(dd,2)];
     var has=rows[0]||rows[1]||rows[2];
-    var s={sales:0,gas:0,inside:0,pay:0,cash:0,cards:0,ebt:0,gp:0,exp:0};
+    var s={sales:0,gas:0,gal:0,inside:0,pay:0,cash:0,cards:0,ebt:0,gp:0,exp:0};
     rows.forEach(function(r){if(!r)return;
-      s.sales=r2(s.sales+num(drepCell(r,4)));s.gas=r2(s.gas+num(drepCell(r,9)));s.inside=r2(s.inside+num(drepCell(r,10)));
+      s.sales=r2(s.sales+num(drepCell(r,4)));s.gas=r2(s.gas+num(drepCell(r,9)));s.gal=s.gal+num(drepCell(r,8));s.inside=r2(s.inside+num(drepCell(r,10)));
       s.pay=r2(s.pay+num(drepCell(r,15)));s.cash=r2(s.cash+num(drepCell(r,22)));s.cards=r2(s.cards+num(drepCell(r,26)));
       s.ebt=r2(s.ebt+num(drepCell(r,27)));s.gp=r2(s.gp+num(drepCell(r,37)));s.exp=r2(s.exp+num(drepCell(r,32)));
     });
     days.push({d:dd,has:has,s:s});
-    if(has){tot.sales=r2(tot.sales+s.sales);tot.gas=r2(tot.gas+s.gas);tot.inside=r2(tot.inside+s.inside);tot.pay=r2(tot.pay+s.pay);tot.cash=r2(tot.cash+s.cash);tot.cards=r2(tot.cards+s.cards);tot.ebt=r2(tot.ebt+s.ebt);tot.gp=r2(tot.gp+s.gp);tot.exp=r2(tot.exp+s.exp);}
+    if(has){tot.sales=r2(tot.sales+s.sales);tot.gas=r2(tot.gas+s.gas);tot.gal=tot.gal+s.gal;tot.inside=r2(tot.inside+s.inside);tot.pay=r2(tot.pay+s.pay);tot.cash=r2(tot.cash+s.cash);tot.cards=r2(tot.cards+s.cards);tot.ebt=r2(tot.ebt+s.ebt);tot.gp=r2(tot.gp+s.gp);tot.exp=r2(tot.exp+s.exp);}
   }
-  var h='<div class="card wide"><h2>Week of '+fmtDay(ws)+' – '+fmtDay(we)+'</h2><div class="tbl"><table><thead><tr><th>Day</th><th style="text-align:right">Sales</th><th style="text-align:right">Gas</th><th style="text-align:right">Inside</th><th style="text-align:right">Pay outs</th><th style="text-align:right">Cash</th><th style="text-align:right">Cards</th><th style="text-align:right">EBT</th><th style="text-align:right">Gas profit</th><th style="text-align:right">Exp. deposit</th></tr></thead><tbody>';
+  var h='<div class="card wide"><h2>Week of '+fmtDay(ws)+' – '+fmtDay(we)+'</h2><div class="tbl"><table><thead><tr><th>Day</th><th style="text-align:right">Sales</th><th style="text-align:right">Gas</th><th style="text-align:right">Gas gal</th><th style="text-align:right">Merchandise</th><th style="text-align:right">Pay outs</th><th style="text-align:right">Cash</th><th style="text-align:right">Cards</th><th style="text-align:right">EBT</th><th style="text-align:right">Gas profit</th><th style="text-align:right">Exp. deposit</th></tr></thead><tbody>';
   days.forEach(function(x){
     var dt=toDate(x.d),lbl=dt.toLocaleDateString('en-US',{weekday:'short'})+' '+fmtDay(x.d);
-    if(!x.has){h+='<tr><td><button type="button" class="repday" data-drep="day-'+x.d+'">'+lbl+'</button></td><td colspan="9" style="color:var(--muted)">No report</td></tr>';return;}
+    if(!x.has){h+='<tr><td><button type="button" class="repday" data-drep="day-'+x.d+'">'+lbl+'</button></td><td colspan="10" style="color:var(--muted)">No report</td></tr>';return;}
     h+='<tr><td><button type="button" class="repday" data-drep="day-'+x.d+'">'+lbl+'</button></td>'+
-      '<td style="text-align:right">'+usd(x.s.sales)+'</td><td style="text-align:right">'+usd(x.s.gas)+'</td><td style="text-align:right">'+usd(x.s.inside)+'</td>'+
+      '<td style="text-align:right">'+usd(x.s.sales)+'</td><td style="text-align:right">'+usd(x.s.gas)+'</td><td style="text-align:right">'+fmtOut(x.s.gal,'gal')+'</td><td style="text-align:right">'+usd(x.s.inside)+'</td>'+
       '<td style="text-align:right">'+usd(x.s.pay)+'</td><td style="text-align:right">'+usd(x.s.cash)+'</td><td style="text-align:right">'+usd(x.s.cards)+'</td>'+
       '<td style="text-align:right">'+usd(x.s.ebt)+'</td><td style="text-align:right">'+usd(x.s.gp)+'</td><td style="text-align:right">'+usd(x.s.exp)+'</td></tr>';
   });
-  h+='<tr class="key"><td>Week total</td><td style="text-align:right">'+usd(tot.sales)+'</td><td style="text-align:right">'+usd(tot.gas)+'</td><td style="text-align:right">'+usd(tot.inside)+'</td><td style="text-align:right">'+usd(tot.pay)+'</td><td style="text-align:right">'+usd(tot.cash)+'</td><td style="text-align:right">'+usd(tot.cards)+'</td><td style="text-align:right">'+usd(tot.ebt)+'</td><td style="text-align:right">'+usd(tot.gp)+'</td><td style="text-align:right">'+usd(tot.exp)+'</td></tr>';
+  h+='<tr class="key"><td>Week total</td><td style="text-align:right">'+usd(tot.sales)+'</td><td style="text-align:right">'+usd(tot.gas)+'</td><td style="text-align:right">'+fmtOut(tot.gal,'gal')+'</td><td style="text-align:right">'+usd(tot.inside)+'</td><td style="text-align:right">'+usd(tot.pay)+'</td><td style="text-align:right">'+usd(tot.cash)+'</td><td style="text-align:right">'+usd(tot.cards)+'</td><td style="text-align:right">'+usd(tot.ebt)+'</td><td style="text-align:right">'+usd(tot.gp)+'</td><td style="text-align:right">'+usd(tot.exp)+'</td></tr>';
   h+='</tbody></table></div></div>';
   return {h:h,totals:{has:true,collected:tot.cash+tot.cards,sales:tot.sales,so:0}};
 }
